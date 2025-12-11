@@ -1,0 +1,301 @@
+═══════════════════════════════════════════════════════════════════════════════
+  APU VOTE - DATABASE ENTITY RELATIONSHIP DIAGRAM (ERD)
+═══════════════════════════════════════════════════════════════════════════════
+
+LEGEND:
+  ━━━━━  One-to-One relationship (1:1)
+  ─────  One-to-Many relationship (1:N)
+  [PK]   Primary Key
+  [FK]   Foreign Key
+  [UK]   Unique Key
+
+═══════════════════════════════════════════════════════════════════════════════
+
+
+┌────────────────────────────────────────────────────────────────────┐
+│                        SUPABASE AUTH LAYER                         │
+└────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────┐
+│        auth.users                │  (Managed by Supabase Auth)
+│  [Supabase Built-in Table]       │
+├──────────────────────────────────┤
+│ [PK] id                  UUID    │
+│      email               VARCHAR │
+│      encrypted_password  TEXT    │
+│      email_confirmed_at  TIMESTAMP │
+│      raw_user_meta_data  JSONB   │
+│      created_at          TIMESTAMP │
+└───────────────┬──────────────────┘
+                │
+                │ 1:1 (AUTO-CREATED VIA TRIGGER)
+                ▼
+
+┌────────────────────────────────────────────────────────────────────┐
+│                        APPLICATION LAYER                           │
+└────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────┐
+│        public.users                  │  (Extended User Profiles)
+├──────────────────────────────────────┤
+│ [PK] id                  UUID        │◄─────┐
+│ [FK] → auth.users.id                 │      │
+│ [UK] email               VARCHAR(255)│      │
+│ [UK] tp_number           VARCHAR(20) │      │ 1:0..1
+│ [UK] wallet_address      VARCHAR(42) │      │
+│      full_name           VARCHAR(255)│      │
+│      department          ENUM        │      │
+│      year_of_study       INTEGER     │      │
+│      role                ENUM        │      │
+│      is_verified         BOOLEAN     │      │
+│      is_active           BOOLEAN     │      │
+│      created_at          TIMESTAMP   │      │
+│      updated_at          TIMESTAMP   │      │
+└──────────────────┬───────────────────┘      │
+                   │                           │
+                   │                   ┌───────┴──────────────────────┐
+                   │                   │   public.admins              │
+                   │                   ├──────────────────────────────┤
+                   │                   │ [PK] id            UUID      │
+                   │                   │ [FK] user_id  →    UUID      │
+                   │                   │      role          VARCHAR   │
+                   │                   │      permissions   ENUM[]    │
+                   │                   │      assigned_by   UUID      │
+                   │                   │      is_active     BOOLEAN   │
+                   │                   │      created_at    TIMESTAMP │
+                   │                   │      updated_at    TIMESTAMP │
+                   │                   └──────────────────────────────┘
+                   │
+                   │ 1:N (User can be multiple candidates)
+                   │
+                   ├────────────────────────────────────────────────┐
+                   │                                                │
+                   ▼                                                ▼
+┌──────────────────────────────────┐              ┌─────────────────────────────┐
+│    public.candidates             │              │   public.votes              │
+├──────────────────────────────────┤              ├─────────────────────────────┤
+│ [PK] id              UUID         │              │ [PK] id            UUID     │
+│ [FK] user_id    →    UUID         │◄─────────────┤ [FK] user_id   →   UUID     │
+│ [FK] category_id →   UUID         │              │ [FK] candidate_id  UUID     │
+│ [FK] election_id →   UUID         │              │ [FK] category_id   UUID     │
+│      candidate_name  VARCHAR(255) │              │ [FK] election_id   UUID     │
+│      party           VARCHAR(100) │              │      blockchain_tx VARCHAR  │
+│      manifesto       TEXT         │              │      blockchain_verified    │
+│      photo_url       TEXT         │              │      voted_at      TIMESTAMP│
+│      vote_count      INTEGER      │              └─────────────────────────────┘
+│      is_approved     BOOLEAN      │                     │     │     │
+│      created_at      TIMESTAMP    │                     │     │     │
+│      updated_at      TIMESTAMP    │                     │     │     │
+└──────────────┬───────────────────┘                     │     │     │
+               │ N:1                                      │     │     │
+               │                                          │     │     │
+               │                                          │     │     │
+               └──────────────────────────────────────────┘     │     │
+                                                                │     │
+┌──────────────────────────────────┐                            │     │
+│    public.categories             │◄───────────────────────────┘     │
+├──────────────────────────────────┤                                  │
+│ [PK] id              UUID         │                                  │
+│ [FK] election_id →   UUID         │                                  │
+│      category_name   VARCHAR(100)│                                  │
+│      description     TEXT         │                                  │
+│      max_votes       INTEGER      │                                  │
+│      display_order   INTEGER      │                                  │
+│      is_active       BOOLEAN      │                                  │
+│      created_at      TIMESTAMP    │                                  │
+│      updated_at      TIMESTAMP    │                                  │
+└──────────────┬───────────────────┘                                  │
+               │ N:1                                                   │
+               │                                                       │
+               │                                                       │
+               │                                                       │
+               ▼                                                       │
+┌──────────────────────────────────┐                                  │
+│    public.elections              │◄─────────────────────────────────┘
+├──────────────────────────────────┤
+│ [PK] id              UUID         │
+│      title           VARCHAR(255)│
+│      description     TEXT         │
+│      start_time      TIMESTAMP    │
+│      end_time        TIMESTAMP    │
+│      is_active       BOOLEAN      │
+│      results_published BOOLEAN    │
+│      max_voters      INTEGER      │
+│      current_voters  INTEGER      │
+│ [FK] created_by  →   UUID         │
+│      created_at      TIMESTAMP    │
+│      updated_at      TIMESTAMP    │
+└──────────────────────────────────┘
+
+
+┌────────────────────────────────────────────────────────────────────┐
+│                      SUPPORTING TABLES                             │
+└────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────┐     ┌──────────────────────────────────┐
+│    public.audit_logs             │     │   public.system_settings         │
+├──────────────────────────────────┤     ├──────────────────────────────────┤
+│ [PK] id          UUID             │     │ [PK] key         VARCHAR(100)    │
+│ [FK] user_id →   UUID             │     │      value       JSONB           │
+│      action      ENUM             │     │      description TEXT            │
+│      entity_type VARCHAR(50)      │     │ [FK] updated_by  UUID            │
+│      entity_id   UUID             │     │      updated_at  TIMESTAMP       │
+│      details     JSONB            │     └──────────────────────────────────┘
+│      ip_address  INET             │
+│      user_agent  TEXT             │
+│      created_at  TIMESTAMP        │
+└──────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  KEY CONSTRAINTS AND RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+1. UNIQUE CONSTRAINTS:
+   ├─ users.email             → Each email can only be used once
+   ├─ users.tp_number         → Each student ID is unique
+   ├─ users.wallet_address    → Each wallet can only link to one user
+   ├─ candidates (user_id, category_id, election_id) → One candidacy per position
+   └─ votes (user_id, category_id, election_id) → ONE VOTE per user per category
+
+2. CHECK CONSTRAINTS:
+   ├─ users.tp_number         → Must match pattern: TP[0-9]{6}
+   ├─ users.wallet_address    → Must match pattern: 0x[a-fA-F0-9]{40}
+   ├─ users.year_of_study     → Must be between 1 and 4
+   ├─ elections.end_time      → Must be greater than start_time
+   ├─ categories              → Maximum 3 categories per election
+   ├─ candidates.vote_count   → Must be >= 0
+   └─ votes.blockchain_tx_hash → Must match pattern: 0x[a-fA-F0-9]{64}
+
+3. CASCADING RULES:
+   ├─ users.id → auth.users.id          ON DELETE CASCADE
+   ├─ categories.election_id → elections ON DELETE CASCADE
+   ├─ candidates.category_id → categories ON DELETE CASCADE
+   ├─ candidates.election_id → elections ON DELETE CASCADE
+   ├─ votes.candidate_id → candidates    ON DELETE CASCADE
+   ├─ votes.category_id → categories     ON DELETE CASCADE
+   └─ votes.election_id → elections      ON DELETE CASCADE
+
+4. IMMUTABLE TABLES (No UPDATE or DELETE):
+   └─ votes (except super_admin DELETE only)
+   └─ audit_logs (completely immutable)
+
+5. AUTO-INCREMENT TRIGGERS:
+   ├─ candidates.vote_count   → Incremented on vote INSERT
+   ├─ elections.current_voters → Incremented on vote INSERT
+   ├─ users.is_verified       → Synced from auth.users.email_confirmed_at
+   └─ *.updated_at            → Auto-updated on row UPDATE
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  CARDINALITY SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+  auth.users     1 ━━━━━ 1    public.users
+                                    │
+                                    ├─── 0..1    public.admins
+                                    │
+                                    ├─── 0..N    public.candidates
+                                    │
+                                    └─── 0..N    public.votes
+
+  public.elections  1 ──── 0..3   public.categories (MAX 3 per election)
+
+  public.categories 1 ──── 0..N   public.candidates
+
+  public.candidates 1 ──── 0..N   public.votes
+
+  public.users      1 ──── 0..N   public.votes (but 0..1 per category/election)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  VOTING FLOW DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+  ┌──────────┐
+  │  Signup  │
+  └────┬─────┘
+       │
+       ▼
+  ┌──────────────────────┐
+  │ auth.users created   │
+  └────┬─────────────────┘
+       │
+       ├─ Trigger: handle_new_user()
+       │
+       ▼
+  ┌──────────────────────┐
+  │ public.users created │
+  │ is_verified = FALSE  │
+  └────┬─────────────────┘
+       │
+       ▼
+  ┌──────────────────────┐
+  │ Email sent           │
+  │ (Supabase Auth)      │
+  └────┬─────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ User clicks verify link      │
+  └────┬─────────────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ email_confirmed_at set       │
+  └────┬─────────────────────────┘
+       │
+       ├─ Trigger: sync_user_email_verification()
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ is_verified = TRUE           │
+  └────┬─────────────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ User can now VOTE            │
+  └────┬─────────────────────────┘
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ Vote inserted                │
+  │ (RLS checks verified status) │
+  └────┬─────────────────────────┘
+       │
+       ├─ Trigger: increment_candidate_votes()
+       │
+       ├─ candidates.vote_count++
+       ├─ elections.current_voters++
+       │
+       ▼
+  ┌──────────────────────────────┐
+  │ Vote confirmed ✓             │
+  │ (Immutable)                  │
+  └──────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  ROW LEVEL SECURITY (RLS) POLICY SUMMARY
+═══════════════════════════════════════════════════════════════════════════════
+
+TABLE             │ SELECT           │ INSERT          │ UPDATE          │ DELETE
+──────────────────┼──────────────────┼─────────────────┼─────────────────┼────────────────
+users             │ Own + Admins     │ Self (signup)   │ Own + Admins    │ Admins
+elections         │ Public           │ Admins          │ Admins          │ Admins
+categories        │ Active + Admins  │ Admins          │ Admins          │ Admins
+candidates        │ Approved + Own   │ Verified users  │ Own + Admins    │ Admins
+votes             │ Own + Admins     │ Verified (1x)   │ 🚫 BLOCKED      │ Super admins
+admins            │ Admins           │ Super admins    │ Super admins    │ Super admins
+audit_logs        │ Admins           │ System          │ 🚫 BLOCKED      │ 🚫 BLOCKED
+system_settings   │ Public           │ 🚫 BLOCKED      │ Admins          │ 🚫 BLOCKED
+
+
+═══════════════════════════════════════════════════════════════════════════════
+  END OF ERD DIAGRAM
+═══════════════════════════════════════════════════════════════════════════════
+
+Generated: 2025-11-20
+Version: 1.0
+For: APU VOTE Blockchain E-Voting Platform
+Documentation: /docs/database-schema-documentation.md

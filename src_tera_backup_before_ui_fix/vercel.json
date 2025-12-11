@@ -1,0 +1,48 @@
+{
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["sin1"],
+  "env": {
+    "NEXT_PUBLIC_ETHEREUM_NETWORK": "@ethereum-network",
+    "NEXT_PUBLIC_CONTRACT_ADDRESS": "@contract-address",
+    "NEXT_PUBLIC_INFURA_ID": "@infura-project-id"
+  },
+  "build": {
+    "env": {
+      "NEXT_PUBLIC_ETHEREUM_NETWORK": "@ethereum-network",
+      "NEXT_PUBLIC_CONTRACT_ADDRESS": "@contract-address",
+      "NEXT_PUBLIC_INFURA_ID": "@infura-project-id"
+    }
+  },
+  "functions": {
+    "app/**/*": {
+      "memory": 3008,
+      "maxDuration": 30
+    }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ]
+}
