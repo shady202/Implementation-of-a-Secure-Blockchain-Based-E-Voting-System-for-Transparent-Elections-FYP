@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Admin Setup - E-Voting System</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          sans-serif;
+        max-width: 600px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #2563eb;
+        margin-bottom: 10px;
+      }
+      .subtitle {
+        color: #666;
+        margin-bottom: 30px;
+      }
+      button {
+        background: #10b981;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 16px;
+        margin-right: 10px;
+        margin-top: 10px;
+      }
+      button:hover {
+        background: #059669;
+      }
+      button.secondary {
+        background: #6b7280;
+      }
+      button.secondary:hover {
+        background: #4b5563;
+      }
+      .status {
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 6px;
+        display: none;
+      }
+      .status.success {
+        background: #d1fae5;
+        color: #065f46;
+        display: block;
+      }
+      .status.error {
+        background: #fee2e2;
+        color: #991b1b;
+        display: block;
+      }
+      .code-block {
+        background: #1e293b;
+        color: #e2e8f0;
+        padding: 15px;
+        border-radius: 6px;
+        font-family: "Courier New", monospace;
+        margin: 15px 0;
+        overflow-x: auto;
+      }
+      .info-box {
+        background: #dbeafe;
+        border-left: 4px solid #2563eb;
+        padding: 15px;
+        margin: 20px 0;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔐 Admin Setup</h1>
+      <p class="subtitle">E-Voting System - Set Admin Credentials</p>
+
+      <div class="info-box">
+        <strong>Current User ID:</strong>
+        <div class="code-block" id="currentUserId">Not set</div>
+      </div>
+
+      <h3>Quick Actions:</h3>
+
+      <button onclick="setAdminUser()">✅ Set Admin User ID</button>
+      <button onclick="checkStatus()" class="secondary">🔍 Check Status</button>
+      <button onclick="clearUser()" class="secondary">❌ Clear User ID</button>
+
+      <div id="status" class="status"></div>
+
+      <div
+        style="
+          margin-top: 30px;
+          padding-top: 20px;
+          border-top: 1px solid #e5e7eb;
+        "
+      >
+        <h3>Manual Setup:</h3>
+        <p>If you prefer, run this in the browser console (F12):</p>
+        <div class="code-block">
+          localStorage.setItem('user_id',
+          '550e8400-e29b-41d4-a716-446655440000'); console.log('✅ Admin user ID
+          set!');
+        </div>
+      </div>
+
+      <div style="margin-top: 20px">
+        <h3>Next Steps:</h3>
+        <ol>
+          <li>Click "Set Admin User ID" button above</li>
+          <li>
+            Go to
+            <a href="http://localhost:3003" target="_blank"
+              >http://localhost:3003</a
+            >
+          </li>
+          <li>Navigate to Admin Dashboard</li>
+          <li>You should now have admin access! 🎉</li>
+        </ol>
+      </div>
+    </div>
+
+    <script>
+      const ADMIN_USER_ID = "550e8400-e29b-41d4-a716-446655440000";
+
+      function updateCurrentUserDisplay() {
+        const userId = localStorage.getItem("user_id");
+        document.getElementById("currentUserId").textContent =
+          userId || "Not set";
+      }
+
+      function showStatus(message, type = "success") {
+        const statusDiv = document.getElementById("status");
+        statusDiv.textContent = message;
+        statusDiv.className = `status ${type}`;
+        updateCurrentUserDisplay();
+      }
+
+      function setAdminUser() {
+        try {
+          localStorage.setItem("user_id", ADMIN_USER_ID);
+          showStatus(
+            "✅ Success! Admin user ID has been set. You can now access the Admin Dashboard.",
+            "success"
+          );
+        } catch (error) {
+          showStatus("❌ Error: " + error.message, "error");
+        }
+      }
+
+      function checkStatus() {
+        const userId = localStorage.getItem("user_id");
+        if (userId === ADMIN_USER_ID) {
+          showStatus("✅ Admin user ID is correctly set!", "success");
+        } else if (userId) {
+          showStatus("⚠️ User ID is set but not as admin: " + userId, "error");
+        } else {
+          showStatus(
+            '❌ No user ID set. Click "Set Admin User ID" to configure.',
+            "error"
+          );
+        }
+      }
+
+      function clearUser() {
+        localStorage.removeItem("user_id");
+        showStatus("🗑️ User ID cleared from localStorage", "success");
+      }
+
+      // Update display on page load
+      updateCurrentUserDisplay();
+      checkStatus();
+    </script>
+  </body>
+</html>

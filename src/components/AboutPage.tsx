@@ -1,10 +1,30 @@
 import { Button } from "./ui/button";
-import { Card, CardContent } from "./ui/card";
-import { Shield, Users, Lock, CheckCircle2, Globe, Award, ChevronRight, ArrowLeft } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Badge } from "./ui/badge";
+import {
+  ArrowLeft,
+  Shield,
+  Lock,
+  CheckCircle2,
+  Users,
+  BarChart3,
+  Globe,
+  Smartphone,
+  Clock,
+  Award,
+  Mail,
+  Phone,
+  MapPin,
+} from "lucide-react";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
-
-const apuLogo = "/apu-logo.png";
+import apuLogo from "../assets/apu-logo.png";
 
 interface AboutPageProps {
   onNavigate: (page: string) => void;
@@ -12,279 +32,481 @@ interface AboutPageProps {
 
 export function AboutPage({ onNavigate }: AboutPageProps) {
   const currentUser = isLoggedIn();
-
-  const handleNavigate = (page: string) => {
-    onNavigate(page);
-  };
-
-  const stats = [
-    { label: "Active Voters", value: "12,000+" },
-    { label: "Elections Conducted", value: "50+" },
-    { label: "Votes Secured", value: "45,000+" },
-    { label: "Uptime", value: "99.9%" },
-  ];
-
-  const teamMembers = [
-    {
-      name: "Dr. Sarah Chen",
-      role: "Project Lead",
-      image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200&h=200",
-    },
-    {
-      name: "James Wilson",
-      role: "Blockchain Architect",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200&h=200",
-    },
-    {
-      name: "Maria Garcia",
-      role: "Security Specialist",
-      image: "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=200&h=200",
-    },
-    {
-      name: "David Kim",
-      role: "Frontend Developer",
-      image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200&h=200",
-    },
-  ];
-
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-50">
-        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2 cursor-pointer" onClick={() => handleNavigate('home')}>
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
+          <div className="flex items center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900 font-bold text-xl">APU VOTE</span>
+            <span className="text-slate-900">About</span>
           </div>
-
-          <nav className="hidden md:flex gap-6">
-            <button onClick={() => handleNavigate('home')} className="text-sm font-medium text-slate-600 hover:text-slate-900">Home</button>
-            <button onClick={() => handleNavigate('vote')} className="text-sm font-medium text-slate-600 hover:text-slate-900">Elections</button>
-            <button onClick={() => handleNavigate('results')} className="text-sm font-medium text-slate-600 hover:text-slate-900">Results</button>
-            <button className="text-sm font-medium text-blue-600">About</button>
-            <button onClick={() => handleNavigate('contact')} className="text-sm font-medium text-slate-600 hover:text-slate-900">Contact</button>
+          <nav className="hidden md:flex gap-6 flex-1 justify-center">
+            <button
+              onClick={() => onNavigate("home")}
+              className="text-sm transition-colors hover:text-primary"
+            >
+              Home
+            </button>
+            <button
+              onClick={() => onNavigate("vote")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Elections
+            </button>
+            <button
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Results
+            </button>
+            <button className="text-sm font-normal text-primary">About</button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Contact
+            </button>
           </nav>
-
-          <div className="flex items-center gap-3">
-            {currentUser ? (
-              <UserNav onNavigate={handleNavigate} />
-            ) : (
-              <div className="flex gap-2">
-                <Button variant="ghost" onClick={() => handleNavigate('login')}>Sign In</Button>
-                <Button onClick={() => handleNavigate('register')} className="bg-blue-600 hover:bg-blue-700">Get Started</Button>
-              </div>
-            )}
+          <div className="flex items-center gap-3 w-48 justify-end">
+            <UserNav onNavigate={onNavigate} />
           </div>
         </div>
       </header>
 
-      <main className="flex-grow">
-        {/* Hero Section */}
-        <section className="bg-white py-20 border-b">
-          <div className="container mx-auto px-6">
-            <div className="max-w-3xl mx-auto text-center space-y-6">
-              <h1 className="text-4xl md:text-5xl font-bold text-slate-900">
-                Revolutionizing Campus Democracy with Blockchain
-              </h1>
-              <p className="text-xl text-slate-600 leading-relaxed">
-                APU VOTE is a state-of-the-art decentralized voting platform designed to ensure transparency, security, and integrity in university elections.
-              </p>
-            </div>
+      <main className="flex-1">
+        <div className="container mx-auto max-w-7xl px-6 md:px-8 py-12">
+          <div className="mb-6">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => onNavigate("home")}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Button>
           </div>
-        </section>
 
-        {/* Stats Section */}
-        <section className="py-12 bg-slate-900 text-white">
-          <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {stats.map((stat, index) => (
-                <div key={index} className="text-center space-y-2">
-                  <div className="text-3xl font-bold text-emerald-400">{stat.value}</div>
-                  <div className="text-sm text-slate-400 uppercase tracking-wide">{stat.label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Mission & Vision */}
-        <section className="py-20">
-          <div className="container mx-auto px-6">
-            <div className="grid md:grid-cols-2 gap-12 items-center">
-              <div className="space-y-6">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-sm font-medium">
-                  <Globe className="h-4 w-4" />
-                  Our Mission
-                </div>
-                <h2 className="text-3xl font-bold text-slate-900">To Empower Every Student Voice</h2>
-                <p className="text-slate-600 leading-relaxed">
-                  We believe that every vote counts and that the integrity of the election process is paramount. By leveraging blockchain technology, we provide a platform where students can vote with confidence, knowing their voice is heard and their vote is secure.
+          <div className="mb-12">
+            <div className="flex items-center gap-4 mb-4">
+              <img
+                src={apuLogo}
+                alt="Asia Pacific University Logo"
+                className="h-16 w-auto"
+              />
+              <div>
+                <h1 className="text-slate-900">About APU VOTE</h1>
+                <p className="text-slate-600 mt-2">
+                  Revolutionizing University Elections with Blockchain
+                  Technology
                 </p>
-                <div className="space-y-4">
-                  {[
-                    "Eliminate voter fraud and manipulation",
-                    "Ensure complete transparency in results",
-                    "Protect voter privacy and anonymity",
-                    "Make voting accessible to all students"
-                  ].map((item, i) => (
-                    <div key={i} className="flex items-center gap-3">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
-                      <span className="text-slate-700">{item}</span>
-                    </div>
-                  ))}
+              </div>
+            </div>
+          </div>
+
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>What is APU VOTE?</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-slate-900">
+                APU VOTE is a cutting-edge blockchain-based voting system
+                designed specifically for Asia Pacific University elections. Our
+                platform ensures transparent, secure, and tamper-proof elections
+                while maintaining voter privacy and providing real-time results.
+              </p>
+              <p className="text-slate-600">
+                Built on Ethereum blockchain technology, APU VOTE eliminates
+                traditional voting concerns such as ballot tampering, vote
+                manipulation, and result disputes. Every vote is
+                cryptographically secured and permanently recorded on the
+                blockchain, creating an immutable record of the democratic
+                process.
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Key Features</CardTitle>
+              <CardDescription>
+                What makes APU VOTE the future of university elections
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex items-start gap-3">
+                  <Shield className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">Blockchain Security</h3>
+                    <p className="text-slate-600">
+                      Every vote is cryptographically secured and stored on the
+                      Ethereum blockchain, making it impossible to tamper with
+                      or manipulate results.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Lock className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">Voter Privacy</h3>
+                    <p className="text-slate-600">
+                      Advanced cryptographic techniques ensure voter anonymity
+                      while maintaining the ability to verify that votes were
+                      counted correctly.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <CheckCircle2 className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">Transparent Process</h3>
+                    <p className="text-slate-600">
+                      All election processes are transparent and auditable.
+                      Anyone can verify the integrity of the election through
+                      blockchain explorers.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Clock className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">Real-time Results</h3>
+                    <p className="text-slate-600">
+                      Vote counts are updated in real-time as ballots are cast,
+                      providing immediate and accurate election results.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Users className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">
+                      Student Verification
+                    </h3>
+                    <p className="text-slate-600">
+                      Integrated with university systems to verify student
+                      eligibility and prevent unauthorized voting.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <Smartphone className="h-6 w-6 text-emerald-500 mt-1 flex-shrink-0" />
+                  <div>
+                    <h3 className="text-slate-900 mb-2">Mobile Friendly</h3>
+                    <p className="text-slate-600">
+                      Fully responsive design allows students to vote securely
+                      from any device, anywhere on campus or remotely.
+                    </p>
+                  </div>
                 </div>
               </div>
-              <div className="relative">
-                <div className="absolute inset-0 bg-gradient-to-tr from-blue-600 to-emerald-400 rounded-2xl transform rotate-3 opacity-20"></div>
-                <Card className="relative border-0 shadow-xl">
-                  <CardContent className="p-8 space-y-6">
-                    <div className="h-12 w-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Award className="h-6 w-6 text-blue-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-900">Why We Built This</h3>
-                    <p className="text-slate-600">
-                      Traditional voting systems are often opaque and prone to errors. We recognized the need for a modern solution that aligns with the technological advancement of our institution.
-                    </p>
-                    <p className="text-slate-600">
-                      APU VOTE represents the convergence of academic excellence and technological innovation, setting a new standard for student governance.
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
-          </div>
-        </section>
+            </CardContent>
+          </Card>
 
-        {/* Technology Stack */}
-        <section className="py-20 bg-white border-y">
-          <div className="container mx-auto px-6">
-            <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
-              <h2 className="text-3xl font-bold text-slate-900">Built on Secure Technology</h2>
-              <p className="text-slate-600">
-                We use industry-standard protocols and cutting-edge blockchain technology to ensure the highest level of security.
-              </p>
-            </div>
-            <div className="grid md:grid-cols-3 gap-8">
-              {[
-                {
-                  icon: <Shield className="h-8 w-8 text-blue-600" />,
-                  title: "End-to-End Encryption",
-                  description: "All data is encrypted in transit and at rest, ensuring that sensitive voter information remains private."
-                },
-                {
-                  icon: <Lock className="h-8 w-8 text-emerald-600" />,
-                  title: "Smart Contracts",
-                  description: "Voting logic is governed by immutable smart contracts on the Ethereum blockchain, preventing tampering."
-                },
-                {
-                  icon: <Users className="h-8 w-8 text-purple-600" />,
-                  title: "Decentralized Verification",
-                  description: "Multiple nodes verify each transaction, making the system resilient to single points of failure."
-                }
-              ].map((feature, i) => (
-                <Card key={i} className="border-0 shadow-lg hover:shadow-xl transition-shadow bg-slate-50">
-                  <CardContent className="p-8 text-center space-y-4">
-                    <div className="mx-auto w-16 h-16 bg-white rounded-full flex items-center justify-center shadow-sm">
-                      {feature.icon}
-                    </div>
-                    <h3 className="text-xl font-bold text-slate-900">{feature.title}</h3>
-                    <p className="text-slate-600">{feature.description}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {/* Team Section
-        <section className="py-20">
-          <div className="container mx-auto px-6">
-            <div className="text-center mb-16">
-              <h2 className="text-3xl font-bold text-slate-900 mb-4">The Team Behind APU VOTE</h2>
-              <p className="text-slate-600 max-w-2xl mx-auto">
-                Built by a dedicated team of students and faculty members committed to improving campus democracy.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-              {teamMembers.map((member, i) => (
-                <div key={i} className="text-center space-y-4">
-                  <div className="relative mx-auto w-32 h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
-                    <img src={member.image} alt={member.name} className="w-full h-full object-cover" />
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>How It Works</CardTitle>
+              <CardDescription>The voting process simplified</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-emerald-100 p-2 text-emerald-600 text-sm min-w-[2rem] h-8 flex items-center justify-center flex-shrink-0">
+                    1
                   </div>
                   <div>
-                    <h3 className="font-bold text-slate-900">{member.name}</h3>
-                    <p className="text-sm text-slate-500">{member.role}</p>
+                    <h3 className="text-slate-900 mb-1">
+                      Eligibility Verification
+                    </h3>
+                    <p className="text-slate-600">
+                      Students verify their eligibility using their student ID
+                      and matriculation number against the university database.
+                    </p>
                   </div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </section> */}
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-emerald-100 p-2 text-emerald-600 text-sm min-w-[2rem] h-8 flex items-center justify-center flex-shrink-0">
+                    2
+                  </div>
+                  <div>
+                    <h3 className="text-slate-900 mb-1">Wallet Registration</h3>
+                    <p className="text-slate-600">
+                      Connect your Ethereum wallet (MetaMask) and register as a
+                      voter. Your wallet address becomes your unique voting
+                      identifier.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-emerald-100 p-2 text-emerald-600 text-sm min-w-[2rem] h-8 flex items-center justify-center flex-shrink-0">
+                    3
+                  </div>
+                  <div>
+                    <h3 className="text-slate-900 mb-1">Cast Your Vote</h3>
+                    <p className="text-slate-600">
+                      Select your preferred candidates for each position during
+                      the active voting period. Your vote is encrypted and
+                      submitted to the blockchain.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-emerald-100 p-2 text-emerald-600 text-sm min-w-[2rem] h-8 flex items-center justify-center flex-shrink-0">
+                    4
+                  </div>
+                  <div>
+                    <h3 className="text-slate-900 mb-1">
+                      Blockchain Confirmation
+                    </h3>
+                    <p className="text-slate-600">
+                      Your vote is permanently recorded on the Ethereum
+                      blockchain with a unique transaction hash for verification
+                      purposes.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="rounded-full bg-emerald-100 p-2 text-emerald-600 text-sm min-w-[2rem] h-8 flex items-center justify-center flex-shrink-0">
+                    5
+                  </div>
+                  <div>
+                    <h3 className="text-slate-900 mb-1">View Results</h3>
+                    <p className="text-slate-600">
+                      Monitor real-time election results and verify the
+                      integrity of the voting process through blockchain
+                      explorers.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-        {/* CTA Section */}
-        <section className="py-20 bg-slate-900 text-white relative overflow-hidden">
-          <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&q=80')] opacity-10 bg-cover bg-center"></div>
-          <div className="container mx-auto px-6 relative z-10 text-center space-y-8">
-            <h2 className="text-3xl md:text-4xl font-bold">Ready to make your voice heard?</h2>
-            <p className="text-xl text-slate-300 max-w-2xl mx-auto">
-              Join thousands of students who are already using APU VOTE to shape the future of our university.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {!currentUser && (
-                <Button
-                  size="lg"
-                  onClick={() => handleNavigate('register')}
-                  className="bg-emerald-500 hover:bg-emerald-600 text-white px-8"
-                >
-                  Register Now
-                </Button>
-              )}
-              <Button
-                size="lg"
-                variant="outline"
-                onClick={() => handleNavigate('contact')}
-                className="border-white text-white hover:bg-white/10 px-8"
-              >
-                Contact Support
-              </Button>
-            </div>
-          </div>
-        </section>
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Technology Stack</CardTitle>
+              <CardDescription>
+                Built with cutting-edge technologies
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center">
+                  <div className="bg-blue-100 p-3 rounded-lg mb-2">
+                    <Globe className="h-8 w-8 text-blue-600 mx-auto" />
+                  </div>
+                  <h3 className="text-slate-900">Ethereum</h3>
+                  <p className="text-slate-600">Blockchain Platform</p>
+                </div>
+                <div className="text-center">
+                  <div className="bg-gray-100 p-3 rounded-lg mb-2">
+                    <BarChart3 className="h-8 w-8 text-gray-600 mx-auto" />
+                  </div>
+                  <h3 className="text-slate-900">Solidity</h3>
+                  <p className="text-slate-600">Smart Contracts</p>
+                </div>
+                <div className="text-center">
+                  <div className="bg-cyan-400 p-3 rounded-lg mb-2 flex items-center justify-center">
+                    <span className="text-white">React</span>
+                  </div>
+                  <h3 className="text-slate-900">React</h3>
+                  <p className="text-slate-600">Frontend Framework</p>
+                </div>
+                <div className="text-center">
+                  <div className="bg-cyan-100 p-3 rounded-lg mb-2">
+                    <div className="h-8 w-8 bg-cyan-500 rounded mx-auto"></div>
+                  </div>
+                  <h3 className="text-slate-900">Tailwind CSS</h3>
+                  <p className="text-slate-600">Styling</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">TypeScript</Badge>
+                <Badge variant="secondary">ethers.js</Badge>
+                <Badge variant="secondary">MetaMask</Badge>
+                <Badge variant="secondary">React</Badge>
+                <Badge variant="secondary">shadcn/ui</Badge>
+                <Badge variant="secondary">Vite</Badge>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Security & Privacy</CardTitle>
+              <CardDescription>
+                Your vote, your privacy, our commitment
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="bg-emerald-50 p-4 rounded-lg">
+                <h3 className="text-slate-900 mb-2 flex items-center gap-2">
+                  <Shield className="h-5 w-5 text-emerald-600" />
+                  Cryptographic Security
+                </h3>
+                <p className="text-slate-600">
+                  All votes are protected using advanced cryptographic
+                  algorithms. Once a vote is cast, it becomes mathematically
+                  impossible to alter or delete.
+                </p>
+              </div>
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h3 className="text-slate-900 mb-2 flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-blue-600" />
+                  Voter Anonymity
+                </h3>
+                <p className="text-slate-600">
+                  While votes are publicly verifiable on the blockchain, voter
+                  identities remain completely anonymous through zero-knowledge
+                  proof techniques.
+                </p>
+              </div>
+              <div className="bg-amber-50 p-4 rounded-lg">
+                <h3 className="text-slate-900 mb-2 flex items-center gap-2">
+                  <Award className="h-5 w-5 text-amber-600" />
+                  Audit Trail
+                </h3>
+                <p className="text-slate-600">
+                  Every action in the voting process is recorded with timestamps
+                  and cryptographic proofs, creating a complete audit trail for
+                  election verification.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>About Asia Pacific University</CardTitle>
+              <CardDescription>
+                Leading the way in technology education
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-slate-900">
+                Asia Pacific University (APU) is among Malaysia's premier
+                private universities, and is where a unique fusion of
+                technology, innovation and creativity works effectively towards
+                preparing professional graduates for significant roles in
+                business and society globally.
+              </p>
+              <p className="text-slate-600">
+                APU has earned an enviable reputation as an award-winning
+                university through its achievements in winning a host of
+                prestigious awards at national and international levels. The
+                university is committed to providing excellent educational
+                opportunities and maintaining high standards of academic
+                excellence.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <Users className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                  <h3 className="text-slate-900">12,000+</h3>
+                  <p className="text-slate-600">Students</p>
+                </div>
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <Globe className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                  <h3 className="text-slate-900">130+</h3>
+                  <p className="text-slate-600">Countries</p>
+                </div>
+                <div className="text-center p-4 bg-slate-50 rounded-lg">
+                  <Award className="h-8 w-8 text-emerald-600 mx-auto mb-2" />
+                  <h3 className="text-slate-900">25+</h3>
+                  <p className="text-slate-600">Years of Excellence</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Contact & Support</CardTitle>
+              <CardDescription>Get in touch with our team</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <h3 className="text-slate-900 mb-4">Technical Support</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Mail className="h-4 w-4 text-slate-600" />
+                      <span className="text-slate-900">
+                        support@apuvote.edu.my
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Phone className="h-4 w-4 text-slate-600" />
+                      <span className="text-slate-900">+60 3-8996 1000</span>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <MapPin className="h-4 w-4 text-slate-600 mt-0.5" />
+                      <span className="text-slate-900">
+                        Technology Park Malaysia
+                        <br />
+                        57000 Kuala Lumpur
+                        <br />
+                        Malaysia
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="text-slate-900 mb-4">Election Committee</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Mail className="h-4 w-4 text-slate-600" />
+                      <span className="text-slate-900">
+                        elections@apu.edu.my
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Phone className="h-4 w-4 text-slate-600" />
+                      <span className="text-slate-900">+60 3-8996 1234</span>
+                    </div>
+                    <p className="text-slate-600">
+                      For election-related inquiries, candidate registration,
+                      and voting assistance.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="mt-6 pt-6 border-t">
+                <p className="text-slate-600 text-center">
+                  APU VOTE is developed and maintained by the Computer Science
+                  Department in collaboration with the Student Affairs Office.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t py-12">
-        <div className="container mx-auto px-6">
-          <div className="grid md:grid-cols-4 gap-8 mb-8">
-            <div className="col-span-1 md:col-span-2 space-y-4">
-              <div className="flex items-center gap-2">
-                <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-                <span className="text-slate-900 font-bold text-xl">APU VOTE</span>
-              </div>
-              <p className="text-slate-600 max-w-xs">
-                A secure, transparent, and decentralized voting platform for Asia Pacific University.
-              </p>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-900 mb-4">Quick Links</h4>
-              <ul className="space-y-2">
-                <li><button onClick={() => handleNavigate('home')} className="text-slate-600 hover:text-emerald-600">Home</button></li>
-                <li><button onClick={() => handleNavigate('vote')} className="text-slate-600 hover:text-emerald-600">Elections</button></li>
-                <li><button onClick={() => handleNavigate('results')} className="text-slate-600 hover:text-emerald-600">Results</button></li>
-                <li><button onClick={() => handleNavigate('about')} className="text-slate-600 hover:text-emerald-600">About Us</button></li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-bold text-slate-900 mb-4">Legal</h4>
-              <ul className="space-y-2">
-                <li><button onClick={() => handleNavigate('privacy')} className="text-slate-600 hover:text-emerald-600">Privacy Policy</button></li>
-                <li><button onClick={() => handleNavigate('terms')} className="text-slate-600 hover:text-emerald-600">Terms of Service</button></li>
-                <li><button onClick={() => handleNavigate('contact')} className="text-slate-600 hover:text-emerald-600">Contact Support</button></li>
-              </ul>
-            </div>
-          </div>
-          <div className="pt-8 border-t text-center text-slate-500 text-sm">
-            © {new Date().getFullYear()} APU VOTE. All rights reserved.
+      <footer className="w-full border-t py-6 mt-12">
+        <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
+          <p className="text-center text-slate-600 md:text-left">
+            &copy; {new Date().getFullYear()} APU Vote Chain. All rights
+            reserved.
+          </p>
+          <div className="flex gap-6">
+            <button
+              onClick={() => onNavigate("terms")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Terms
+            </button>
+            <button
+              onClick={() => onNavigate("privacy")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Privacy
+            </button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Contact
+            </button>
           </div>
         </div>
       </footer>

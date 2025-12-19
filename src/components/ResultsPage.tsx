@@ -1,9 +1,19 @@
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { ArrowLeft, Clock, RefreshCw, AlertCircle } from "lucide-react";
-import * as api from "../lib/api";
+import {
+  getAllCategories,
+  getCandidatesForCategory,
+  getElectionState,
+} from "../lib/blockchain";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
 
@@ -49,7 +59,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
 
   // Group candidates by category
   const getCandidatesByCategory = (categoryName: string) => {
-    return candidates.filter(c => c.category === categoryName);
+    return candidates.filter((c) => c.category === categoryName);
   };
 
   // Group candidates by position within a category
@@ -57,7 +67,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
     const categoryCandidates = getCandidatesByCategory(categoryName);
     const positions: Record<string, Candidate[]> = {};
 
-    categoryCandidates.forEach(candidate => {
+    categoryCandidates.forEach((candidate) => {
       if (!positions[candidate.position]) {
         positions[candidate.position] = [];
       }
@@ -65,7 +75,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
     });
 
     // Sort candidates by votes within each position
-    Object.keys(positions).forEach(position => {
+    Object.keys(positions).forEach((position) => {
       positions[position].sort((a, b) => b.votes - a.votes);
     });
 
@@ -76,40 +86,51 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
     try {
       setLoading(true);
 
-      // Get categories, candidates, and settings
-      const [categoriesData, adminData, settingsData] = await Promise.all([
-        api.getCategories(),
-        api.getAdminData(),
-        api.getElectionSettings()
+      // ✅ Get data directly from blockchain
+      const [categoriesData, electionData] = await Promise.all([
+        getAllCategories(),
+        getElectionState(),
       ]);
 
       // Filter only active categories
-      const activeCategs = (categoriesData.categories || []).filter((cat: Category) => cat.isActive);
-      setActiveCategories(activeCategs);
+      const activeCategs = categoriesData.filter((cat: any) => cat.isActive);
+      setActiveCategories(
+        activeCategs.map((cat: any) => ({
+          id: String(cat.id),
+          name: cat.name,
+          description: cat.description,
+          maxVotes: 1,
+          isActive: cat.isActive,
+        }))
+      );
 
       // Set the first active category as default
       if (activeCategs.length > 0) {
         setActiveCategory(activeCategs[0].name);
       }
 
-      // Set candidates
-      setCandidates(adminData.candidates || []);
+      // ✅ Get candidates for ALL categories from blockchain
+      const allCandidates: Candidate[] = [];
+      for (const cat of activeCategs) {
+        const catCandidates = await getCandidatesForCategory(cat.id);
+        catCandidates.forEach((cand: any) => {
+          allCandidates.push({
+            id: String(cand.id),
+            name: cand.name,
+            position: cat.name, // Use category name as position
+            party: cand.party,
+            category: cat.name,
+            votes: Number(cand.votes || cand.voteCount || 0), // Get vote count from blockchain!
+          });
+        });
+      }
+      setCandidates(allCandidates);
 
-      setElectionTitle(settingsData.title || "APU Election");
+      setElectionTitle(electionData.title || "APU Election");
 
       // Check if election is currently active
-      const now = new Date();
-      const startDate = new Date(settingsData.startDate);
-      const endDate = new Date(settingsData.endDate);
-      const isActive = now >= startDate && now <= endDate;
-      setElectionActive(isActive);
-
-      // Check if results should be shown during voting
-      if (isActive && settingsData.showResultsDuringVoting === false) {
-        setShowResults(false);
-      } else {
-        setShowResults(true);
-      }
+      setElectionActive(electionData.isActive);
+      setShowResults(true); // Always show results for testing
 
       setLastUpdated(new Date());
     } catch (error) {
@@ -137,28 +158,60 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white">
-        <div className="container flex h-16 items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={apuLogo} alt="Asia Pacific University Logo" className="h-8 w-auto" />
-            <h2 className="text-slate-900">Election Results</h2>
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
+          <div className="flex items-center gap-2 w-48">
+            <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
+            <span className="text-slate-900">Election Results</span>
           </div>
-          <div className="flex items-center gap-4">
+          <nav className="hidden md:flex gap-6 flex-1 justify-center">
+            <button
+              onClick={() => onNavigate("home")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Home
+            </button>
+            <button
+              onClick={() => onNavigate("vote")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Elections
+            </button>
+            <button
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal text-primary"
+            >
+              Results
+            </button>
+            <button
+              onClick={() => onNavigate("about")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              About
+            </button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm font-normal transition-colors hover:text-primary"
+            >
+              Contact
+            </button>
+          </nav>
+          <div className="flex items-center gap-3 w-48 justify-end">
             {currentUser && <UserNav onNavigate={onNavigate} />}
           </div>
         </div>
       </header>
 
-      <main className="flex-1 container py-12">
+      <main className="flex-1 container mx-auto max-w-7xl px-6 md:px-8 py-16">
         <div className="mx-auto max-w-6xl">
           <div className="mb-8">
             <Button
               variant="ghost"
               size="sm"
               className="gap-1 mb-4"
-              onClick={() => onNavigate('home')}
+              onClick={() => onNavigate("home")}
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Home
@@ -186,7 +239,9 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
                 disabled={refreshing}
                 className="gap-2"
               >
-                <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+                <RefreshCw
+                  className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+                />
                 Refresh
               </Button>
             </div>
@@ -200,7 +255,8 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
                   <AlertCircle className="h-16 w-16 text-amber-500" />
                   <h3 className="text-slate-900">Results Hidden</h3>
                   <p className="text-slate-600 max-w-md">
-                    Results are hidden during the voting period. Please check back after the election ends to view the results.
+                    Results are hidden during the voting period. Please check
+                    back after the election ends to view the results.
                   </p>
                 </div>
               </CardContent>
@@ -221,16 +277,25 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
                   <AlertCircle className="h-16 w-16 text-amber-500" />
                   <h3 className="text-slate-900">No Categories Available</h3>
                   <p className="text-slate-600 max-w-md">
-                    The election administrator hasn't set up any voting categories yet.
+                    The election administrator hasn't set up any voting
+                    categories yet.
                   </p>
                 </div>
               </CardContent>
             </Card>
           ) : (
-            <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
-              <TabsList className={`grid w-full mb-6`} style={{ gridTemplateColumns: `repeat(${activeCategories.length}, 1fr)` }}>
+            <Tabs
+              value={activeCategory}
+              onValueChange={setActiveCategory}
+              className="w-full"
+            >
+              <TabsList className="flex w-full mb-6 overflow-x-auto whitespace-nowrap gap-2 bg-slate-100 p-2 rounded-lg">
                 {activeCategories.map((category) => (
-                  <TabsTrigger key={category.id} value={category.name}>
+                  <TabsTrigger
+                    key={category.id}
+                    value={category.name}
+                    className="flex-shrink-0 min-w-[120px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                  >
                     {category.name}
                   </TabsTrigger>
                 ))}
@@ -239,75 +304,110 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
               {activeCategories.map((category) => {
                 const positions = getPositionsForCategory(category.name);
                 return (
-                  <TabsContent key={category.id} value={category.name} className="space-y-6">
+                  <TabsContent
+                    key={category.id}
+                    value={category.name}
+                    className="space-y-6"
+                  >
                     {Object.keys(positions).length === 0 ? (
                       <Card>
                         <CardContent className="py-12">
                           <div className="text-center">
-                            <p className="text-slate-600">No candidates in this category yet.</p>
+                            <p className="text-slate-600">
+                              No candidates in this category yet.
+                            </p>
                           </div>
                         </CardContent>
                       </Card>
                     ) : (
-                      Object.entries(positions).map(([positionName, positionCandidates]) => {
-                        const totalVotes = getTotalVotesForPosition(positionCandidates);
-                        return (
-                          <Card key={positionName}>
-                            <CardHeader>
-                              <CardTitle>{positionName}</CardTitle>
-                              <CardDescription>
-                                Total votes cast: {totalVotes}
-                              </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                              {positionCandidates.map((candidate, index) => {
-                                const percentage = calculatePercentage(candidate.votes, totalVotes);
-                                const isWinner = index === 0 && totalVotes > 0;
+                      Object.entries(positions).map(
+                        ([positionName, positionCandidates]) => {
+                          const totalVotes =
+                            getTotalVotesForPosition(positionCandidates);
+                          return (
+                            <Card
+                              key={positionName}
+                              className="border-2 shadow-lg"
+                            >
+                              <CardHeader>
+                                <CardTitle>{positionName}</CardTitle>
+                                <CardDescription>
+                                  Total votes cast: {totalVotes}
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent className="space-y-4">
+                                {positionCandidates.map((candidate, index) => {
+                                  const percentage = calculatePercentage(
+                                    candidate.votes,
+                                    totalVotes
+                                  );
+                                  const isWinner =
+                                    index === 0 && totalVotes > 0;
 
-                                return (
-                                  <div
-                                    key={candidate.id}
-                                    className={`p-4 rounded-lg border ${isWinner ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200'
+                                  return (
+                                    <div
+                                      key={candidate.id}
+                                      className={`p-4 rounded-lg border ${
+                                        isWinner
+                                          ? "border-emerald-500 bg-emerald-50"
+                                          : "border-slate-200"
                                       }`}
-                                  >
-                                    <div className="flex items-center justify-between mb-2">
-                                      <div className="flex items-center gap-3">
-                                        <div className={`flex h-8 w-8 items-center justify-center rounded-full ${isWinner ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-600'
-                                          }`}>
-                                          {index + 1}
-                                        </div>
-                                        <div>
-                                          <div className="flex items-center gap-2">
-                                            <span className="text-slate-900">{candidate.name}</span>
-                                            {isWinner && (
-                                              <span className="px-2 py-0.5 bg-emerald-500 text-white rounded text-xs">
-                                                Leading
-                                              </span>
-                                            )}
+                                    >
+                                      <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-3">
+                                          <div
+                                            className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                                              isWinner
+                                                ? "bg-emerald-500 text-white"
+                                                : "bg-slate-200 text-slate-600"
+                                            }`}
+                                          >
+                                            {index + 1}
                                           </div>
-                                          <div className="text-slate-600">{candidate.party}</div>
+                                          <div>
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-slate-900">
+                                                {candidate.name}
+                                              </span>
+                                              {isWinner && (
+                                                <span className="px-2 py-0.5 bg-emerald-500 text-white rounded text-xs">
+                                                  Leading
+                                                </span>
+                                              )}
+                                            </div>
+                                            <div className="text-slate-600">
+                                              {candidate.party}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-slate-900">
+                                            {candidate.votes} votes
+                                          </div>
+                                          <div className="text-slate-600">
+                                            {percentage}%
+                                          </div>
                                         </div>
                                       </div>
-                                      <div className="text-right">
-                                        <div className="text-slate-900">{candidate.votes} votes</div>
-                                        <div className="text-slate-600">{percentage}%</div>
+                                      {/* Progress bar */}
+                                      <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full transition-all ${
+                                            isWinner
+                                              ? "bg-emerald-500"
+                                              : "bg-slate-400"
+                                          }`}
+                                          style={{ width: `${percentage}%` }}
+                                        />
                                       </div>
                                     </div>
-                                    {/* Progress bar */}
-                                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
-                                      <div
-                                        className={`h-full transition-all ${isWinner ? 'bg-emerald-500' : 'bg-slate-400'
-                                          }`}
-                                        style={{ width: `${percentage}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </CardContent>
-                          </Card>
-                        );
-                      })
+                                  );
+                                })}
+                              </CardContent>
+                            </Card>
+                          );
+                        }
+                      )
                     )}
                   </TabsContent>
                 );
@@ -323,7 +423,9 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
             <CardContent className="space-y-2">
               <div className="flex justify-between text-slate-600">
                 <span>Total Categories:</span>
-                <span className="text-slate-900">{activeCategories.length}</span>
+                <span className="text-slate-900">
+                  {activeCategories.length}
+                </span>
               </div>
               <div className="flex justify-between text-slate-600">
                 <span>Total Candidates:</span>
@@ -332,7 +434,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
               <div className="flex justify-between text-slate-600">
                 <span>Status:</span>
                 <span className="text-slate-900">
-                  {electionActive ? 'In Progress' : 'Completed'}
+                  {electionActive ? "In Progress" : "Completed"}
                 </span>
               </div>
             </CardContent>

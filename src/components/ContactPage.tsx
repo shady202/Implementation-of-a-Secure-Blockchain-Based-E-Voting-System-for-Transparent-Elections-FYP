@@ -1,11 +1,25 @@
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
-import { Mail, Phone, MapPin, Clock, MessageCircle, HelpCircle, ArrowLeft } from "lucide-react";
+import {
+  Mail,
+  Phone,
+  MapPin,
+  Clock,
+  MessageCircle,
+  HelpCircle,
+  ArrowLeft,
+} from "lucide-react";
 const apuLogo = "/apu-logo.png";
 
 interface ContactPageProps {
@@ -21,41 +35,39 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
   };
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
-          <div className="flex items-center gap-3 w-48">
-            <img src={apuLogo} alt="Asia Pacific University Logo" className="h-10 w-auto" />
-            <span>APU VOTE</span>
+          <div className="flex items-center gap-2 w-48">
+            <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
+            <span className="text-slate-900">Contact</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
-              onClick={() => onNavigate('home')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("home")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Home
             </button>
             <button
-              onClick={() => onNavigate('vote')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("vote")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Elections
             </button>
             <button
-              onClick={() => onNavigate('results')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Results
             </button>
             <button
-              onClick={() => onNavigate('about')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("about")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               About
             </button>
-            <button
-              className="text-sm text-primary"
-            >
+            <button className="text-sm font-normal text-primary">
               Contact
             </button>
           </nav>
@@ -72,7 +84,7 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
               variant="ghost"
               size="sm"
               className="gap-1"
-              onClick={() => onNavigate('home')}
+              onClick={() => onNavigate("home")}
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Home
@@ -81,7 +93,8 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
           <div className="mb-8">
             <h1 className="text-slate-900 mb-2">Contact Us</h1>
             <p className="text-slate-600">
-              Have questions about APU VOTE? We're here to help. Reach out to us through any of the channels below.
+              Have questions about APU VOTE? We're here to help. Reach out to us
+              through any of the channels below.
             </p>
           </div>
 
@@ -98,15 +111,25 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
               <CardContent>
                 <div className="space-y-2 text-slate-600">
                   <div>
-                    <strong className="text-slate-900">General Inquiries:</strong>
+                    <strong className="text-slate-900">
+                      General Inquiries:
+                    </strong>
                   </div>
-                  <a href="mailto:vote@apu.edu.my" className="text-emerald-600 hover:underline block">
+                  <a
+                    href="mailto:vote@apu.edu.my"
+                    className="text-emerald-600 hover:underline block"
+                  >
                     vote@apu.edu.my
                   </a>
                   <div className="mt-3">
-                    <strong className="text-slate-900">Technical Support:</strong>
+                    <strong className="text-slate-900">
+                      Technical Support:
+                    </strong>
                   </div>
-                  <a href="mailto:support@apu.edu.my" className="text-emerald-600 hover:underline block">
+                  <a
+                    href="mailto:support@apu.edu.my"
+                    className="text-emerald-600 hover:underline block"
+                  >
                     support@apu.edu.my
                   </a>
                 </div>
@@ -127,13 +150,21 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                   <div>
                     <strong className="text-slate-900">Main Line:</strong>
                   </div>
-                  <a href="tel:+60389961000" className="text-emerald-600 hover:underline block">
+                  <a
+                    href="tel:+60389961000"
+                    className="text-emerald-600 hover:underline block"
+                  >
                     +60 3-8996 1000
                   </a>
                   <div className="mt-3">
-                    <strong className="text-slate-900">Student Services:</strong>
+                    <strong className="text-slate-900">
+                      Student Services:
+                    </strong>
                   </div>
-                  <a href="tel:+60389961234" className="text-emerald-600 hover:underline block">
+                  <a
+                    href="tel:+60389961234"
+                    className="text-emerald-600 hover:underline block"
+                  >
                     +60 3-8996 1234
                   </a>
                 </div>
@@ -151,7 +182,9 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
               </CardHeader>
               <CardContent>
                 <div className="leading-relaxed text-slate-600">
-                  <div className="text-slate-900 mb-1">Asia Pacific University</div>
+                  <div className="text-slate-900 mb-1">
+                    Asia Pacific University
+                  </div>
                   <div>Technology Park Malaysia</div>
                   <div>Bukit Jalil</div>
                   <div>57000 Kuala Lumpur</div>
@@ -168,7 +201,10 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                   <MessageCircle className="h-6 w-6 text-emerald-500" />
                   <CardTitle>Send Us a Message</CardTitle>
                 </div>
-                <CardDescription>Fill out the form below and we'll get back to you within 24 hours.</CardDescription>
+                <CardDescription>
+                  Fill out the form below and we'll get back to you within 24
+                  hours.
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -184,7 +220,12 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">University Email *</Label>
-                    <Input id="email" type="email" placeholder="tp123456@mail.apu.edu.my" required />
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="tp123456@mail.apu.edu.my"
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="studentId">Student ID *</Label>
@@ -192,7 +233,11 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="subject">Subject *</Label>
-                    <Input id="subject" placeholder="Question about voting process" required />
+                    <Input
+                      id="subject"
+                      placeholder="Question about voting process"
+                      required
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="message">Message *</Label>
@@ -203,7 +248,10 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                       required
                     />
                   </div>
-                  <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
+                  <Button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  >
                     Send Message
                   </Button>
                 </form>
@@ -221,7 +269,9 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                 <CardContent>
                   <div className="space-y-3 text-slate-600">
                     <div>
-                      <div className="text-slate-900">During Election Period:</div>
+                      <div className="text-slate-900">
+                        During Election Period:
+                      </div>
                       <div>Monday - Sunday: 8:00 AM - 10:00 PM</div>
                     </div>
                     <div>
@@ -230,7 +280,9 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                       <div>Saturday: 9:00 AM - 1:00 PM</div>
                       <div>Sunday & Public Holidays: Closed</div>
                     </div>
-                    <div className="text-slate-500 italic">All times are in Malaysia Standard Time (GMT+8)</div>
+                    <div className="text-slate-500 italic">
+                      All times are in Malaysia Standard Time (GMT+8)
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -245,31 +297,42 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                 <CardContent>
                   <div className="space-y-4 text-slate-600">
                     <div>
-                      <div className="text-slate-900 mb-1">How do I register to vote?</div>
+                      <div className="text-slate-900 mb-1">
+                        How do I register to vote?
+                      </div>
                       <div>
-                        Click the "Register" button and use your @apu.edu.my email to create an account. You'll need
-                        your student ID for verification.
+                        Click the "Register" button and use your @apu.edu.my
+                        email to create an account. You'll need your student ID
+                        for verification.
                       </div>
                     </div>
                     <div>
-                      <div className="text-slate-900 mb-1">Is my vote really anonymous?</div>
+                      <div className="text-slate-900 mb-1">
+                        Is my vote really anonymous?
+                      </div>
                       <div>
-                        Yes! Your vote is encrypted and recorded on the blockchain without any connection to your
-                        identity. Not even administrators can see how you voted.
+                        Yes! Your vote is encrypted and recorded on the
+                        blockchain without any connection to your identity. Not
+                        even administrators can see how you voted.
                       </div>
                     </div>
                     <div>
-                      <div className="text-slate-900 mb-1">Can I change my vote?</div>
+                      <div className="text-slate-900 mb-1">
+                        Can I change my vote?
+                      </div>
                       <div>
-                        No. Once submitted to the blockchain, votes are permanent and cannot be changed. Please review
-                        your choices carefully before submitting.
+                        No. Once submitted to the blockchain, votes are
+                        permanent and cannot be changed. Please review your
+                        choices carefully before submitting.
                       </div>
                     </div>
                     <div>
-                      <div className="text-slate-900 mb-1">What if I forget my password?</div>
+                      <div className="text-slate-900 mb-1">
+                        What if I forget my password?
+                      </div>
                       <div>
-                        Use the "Forgot Password" link on the login page. A reset link will be sent to your university
-                        email.
+                        Use the "Forgot Password" link on the login page. A
+                        reset link will be sent to your university email.
                       </div>
                     </div>
                   </div>
@@ -283,12 +346,18 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
                 <CardContent>
                   <div className="space-y-3 text-slate-600">
                     <div>
-                      For urgent technical issues during active elections, please call our hotline:
+                      For urgent technical issues during active elections,
+                      please call our hotline:
                     </div>
-                    <a href="tel:+60389961000" className="text-emerald-600 hover:underline block">
+                    <a
+                      href="tel:+60389961000"
+                      className="text-emerald-600 hover:underline block"
+                    >
                       +60 3-8996 1000
                     </a>
-                    <div className="text-slate-500">Available during election periods only</div>
+                    <div className="text-slate-500">
+                      Available during election periods only
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -301,9 +370,13 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
             </CardHeader>
             <CardContent>
               <div className="text-center text-slate-600">
-                For issues related to election rules, candidate complaints, or official grievances, please contact the
-                APU Student Council Elections Committee directly at{" "}
-                <a href="mailto:elections@apu.edu.my" className="text-emerald-600 hover:underline">
+                For issues related to election rules, candidate complaints, or
+                official grievances, please contact the APU Student Council
+                Elections Committee directly at{" "}
+                <a
+                  href="mailto:elections@apu.edu.my"
+                  className="text-emerald-600 hover:underline"
+                >
                   elections@apu.edu.my
                 </a>
               </div>
@@ -315,23 +388,24 @@ export function ContactPage({ onNavigate }: ContactPageProps) {
       <footer className="w-full border-t py-6 mt-12">
         <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
           <div className="text-center text-slate-600 md:text-left">
-            &copy; {new Date().getFullYear()} APU Vote Chain. All rights reserved.
+            &copy; {new Date().getFullYear()} APU Vote Chain. All rights
+            reserved.
           </div>
           <div className="flex gap-6">
             <button
-              onClick={() => onNavigate('terms')}
+              onClick={() => onNavigate("terms")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Terms
             </button>
             <button
-              onClick={() => onNavigate('privacy')}
+              onClick={() => onNavigate("privacy")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Privacy
             </button>
             <button
-              onClick={() => onNavigate('contact')}
+              onClick={() => onNavigate("contact")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Contact

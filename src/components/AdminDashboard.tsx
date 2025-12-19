@@ -1,47 +1,91 @@
-import { useState, useEffect } from "react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { generateCategoryId } from "../lib/utils";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import { Badge } from "./ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { Switch } from "./ui/switch";
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
-  BarChart3,
-  CheckCircle2,
-  Clock,
-  Download,
   Loader2,
-  Lock,
   Plus,
-  RefreshCw,
   Trash2,
   Users,
+  CheckCircle2,
+  Clock,
+  BarChart3,
+  Lock,
+  RefreshCw,
+  Download,
 } from "lucide-react";
+import { toast } from "sonner";
+
 import { AuthGuard } from "./AuthGuard";
 import { UserNav } from "./UserNav";
-import { exportVotersToExcel } from "../lib/exportUtils";
-import { toast } from "sonner";
-import * as api from "../lib/api";
-import { startElectionOnChain, endElectionOnChain, createElectionOnChain, addCandidateOnChain } from "../lib/blockchain";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { parseBlockchainError } from "../lib/errorParser";
+
+import {
+  createElection,
+  startElection,
+  endElection,
+  resetSystem,
+  getElectionInfo,
+  getAllCategories,
+  createCategory,
+  addCandidate,
+  deactivateCandidate,
+  getCandidatesForCategory,
+} from "../lib/blockchain";
+
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Badge } from "./ui/badge";
+import { Label } from "./ui/label";
+import { Switch } from "./ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 const apuLogo = "/apu-logo.png";
 
-interface AdminDashboardProps {
-  onNavigate: (page: string) => void;
+// Helper to get current user ID for API calls
+const getCurrentUserId = () => localStorage.getItem("user_id");
+
+interface Category {
+  id: number;
+  name: string;
+  description: string;
+  isActive: boolean;
 }
 
 interface Candidate {
-  id: string;
+  id: number;
   name: string;
-  position: string;
   party: string;
-  category: string;
-  contractId?: number;
+  categoryId: number;
+}
+
+interface Activity {
+  id: string;
+  type: string;
+  description: string;
+  timestamp: string;
 }
 
 interface Voter {
@@ -53,41 +97,25 @@ interface Voter {
   hasVoted: boolean;
 }
 
-interface Activity {
-  id: string;
-  type: string;
-  description: string;
-  timestamp: string;
-}
-
-interface Category {
-  id: string;
-  name: string;
-  description: string;
-  maxVotes: number;
-  isActive: boolean;
+interface AdminDashboardProps {
+  onNavigate: (page: string) => void;
 }
 
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [adminData, setAdminData] = useState({
-    totalVoters: 0,
-    registeredVoters: 0,
-    votesCount: 0,
-    electionStatus: "Not Started",
-    electionTitle: "Student Council Election 2025",
-    startDate: "",
-    endDate: "",
-    candidates: [] as Candidate[],
-    voters: [] as Voter[],
-    activities: [] as Activity[],
-  });
+
+  const [election, setElection] = useState<any>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+
   const [newElection, setNewElection] = useState({
     title: "",
     startDate: "",
     endDate: "",
   });
+  const [newCategory, setNewCategory] = useState({ name: "", description: "" });
   const [newCandidate, setNewCandidate] = useState({
     name: "",
     position: "",
@@ -95,130 +123,260 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     category: "",
     contractId: "",
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [requireVerification, setRequireVerification] = useState(true);
   const [showResultsDuringVoting, setShowResultsDuringVoting] = useState(false);
-  const [categories, setCategories] = useState<Category[]>([]);
 
-  useEffect(() => {
-    fetchAdminData();
-    loadElectionSettings();
-    loadCategories();
+  // Admin data derived from election state
+  const adminData = {
+    registeredVoters: election?.totalVoters || 0,
+    totalVoters: 100, // Placeholder - you can adjust
+    votesCount: election?.totalVotes || 0,
+    electionStatus:
+      election?.state === 0
+        ? "Not Started"
+        : election?.state === 1
+        ? "Setup Phase" // Created state - can add categories/candidates
+        : election?.state === 2
+        ? "Active"
+        : election?.state === 3
+        ? "Ended"
+        : "Not Started",
+    electionTitle: election?.title || "No Election Created",
+    startDate: election?.startTime
+      ? new Date(election.startTime * 1000).toISOString()
+      : "",
+    endDate: election?.endTime
+      ? new Date(election.endTime * 1000).toISOString()
+      : "",
+    candidates: candidates.map((c) => ({
+      id: c.id,
+      name: c.name,
+      position:
+        categories.find((cat) => cat.id === c.categoryId)?.name || "Unknown",
+      party: c.party,
+    })),
+    voters: [] as Voter[], // Blockchain doesn't expose voter list directly
+    activities: [] as Activity[], // Placeholder for activities
+  };
 
-    // Auto-refresh activities every 30 seconds
-    const interval = setInterval(() => {
-      fetchActivities();
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  const fetchAdminData = async () => {
+  const loadAll = async () => {
     try {
       setLoading(true);
-      const data = await api.getAdminData();
-      setAdminData(data);
-    } catch (error) {
-      console.error("Error fetching admin data:", error);
-      toast.error("Failed to load admin data");
+
+      const e = await getElectionInfo();
+      const cats = await getAllCategories();
+
+      const allCandidates: Candidate[] = [];
+      for (const c of cats as Category[]) {
+        const cand = await getCandidatesForCategory(c.id);
+        (cand as any[]).forEach((x) => {
+          allCandidates.push({
+            id: Number(x.id),
+            name: String(x.name),
+            party: String(x.party),
+            categoryId: c.id,
+          });
+        });
+      }
+
+      setElection(e);
+      setCategories(cats as Category[]);
+      setCandidates(allCandidates);
+    } catch (err: any) {
+      console.error("Create category error:", err);
+      const errorDetail =
+        err?.response?.data || err?.message || JSON.stringify(err);
+      toast.error(`RAW ERROR: ${JSON.stringify(errorDetail, null, 2)}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadElectionSettings = async () => {
-    try {
-      const settings = await api.getElectionSettings();
-      setNewElection({
-        title: settings.title || "",
-        startDate: settings.startDate || "",
-        endDate: settings.endDate || "",
-      });
-      setRequireVerification(settings.requireIdVerification ?? true);
-      setShowResultsDuringVoting(settings.showResultsDuringVoting ?? false);
-    } catch (error) {
-      console.error("Error loading election settings:", error);
-    }
-  };
-
-  const loadCategories = async () => {
-    try {
-      const data = await api.getCategories();
-      setCategories(data.categories || []);
-    } catch (error) {
-      console.error("Error loading categories:", error);
-    }
-  };
-
-  const fetchActivities = async () => {
-    try {
-      const activities = await api.getRecentActivities();
-      setAdminData(prev => ({ ...prev, activities: activities.activities || [] }));
-    } catch (error) {
-      console.error("Error fetching activities:", error);
-    }
-  };
+  useEffect(() => {
+    loadAll();
+  }, []);
 
   const handleCreateElection = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
+    try {
+      setSubmitting(true);
+      const start = Math.floor(
+        new Date(newElection.startDate).getTime() / 1000
+      );
+      const end = Math.floor(new Date(newElection.endDate).getTime() / 1000);
+      await createElection(newElection.title, start, end);
+      toast.success("Election created successfully!");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleStartElection = async () => {
+    try {
+      setSubmitting(true);
+      await startElection();
+      toast.success("Election started successfully!");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleEndElection = async () => {
+    try {
+      setSubmitting(true);
+      await endElection();
+      toast.success("Election ended successfully!");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResetSystem = async () => {
+    const confirmed = window.confirm(
+      "⚠️ WARNING: This will completely reset the system!\n\n" +
+        "This action will DELETE:\n" +
+        "• All elections\n" +
+        "• All categories\n" +
+        "• All candidates\n" +
+        "• All voters\n" +
+        "• All votes\n\n" +
+        "This cannot be undone. Are you absolutely sure?"
+    );
+
+    if (!confirmed) {
+      toast.info("Reset cancelled");
+      return;
+    }
 
     try {
-      // Validate dates
-      const now = new Date();
-      const startDate = new Date(newElection.startDate);
-      const endDate = new Date(newElection.endDate);
+      setSubmitting(true);
 
-      // Set 'now' to the beginning of the current minute to avoid millisecond issues
-      now.setSeconds(0, 0);
-      startDate.setSeconds(0, 0);
-      endDate.setSeconds(0, 0);
+      // Auto-handle state transitions for reset
+      // States: 0=None, 1=Created (Setup Phase), 2=Active, 3=Ended
+      if (election && election.state === 1) {
+        // If in Setup Phase (Created), start first, then end
+        toast.info("Starting election...");
+        await startElection();
+        toast.success("Election started!");
 
-      if (startDate < now) {
-        toast.error("Start date and time cannot be in the past. Please select a current or future date.");
-        setSubmitting(false);
+        toast.info("Ending election...");
+        await endElection();
+        toast.success("Election ended!");
+      } else if (election && election.state === 2) {
+        // If Active, just end it
+        toast.info("Ending election...");
+        await endElection();
+        toast.success("Election ended!");
+      }
+      // If already Ended (state=3) or None (state=0), just reset
+
+      await resetSystem();
+      toast.success(
+        "🔄 System reset successfully! You can now create a new election."
+      );
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    try {
+      setSubmitting(true);
+
+      // Check if election is in Setup Phase (state = 1 = Created)
+      if (!election || election.state !== 1) {
+        toast.error("❌ Categories can only be added during Setup Phase!");
         return;
       }
 
-      if (endDate <= startDate) {
-        toast.error("End date must be after the start date.");
-        setSubmitting(false);
-        return;
-      }
-
-      // CRITICAL: Create election on BLOCKCHAIN first with Unix timestamps
-      toast.info("Creating election on blockchain...");
-      const startTimestamp = Math.floor(startDate.getTime() / 1000); // Convert to Unix timestamp
-      const endTimestamp = Math.floor(endDate.getTime() / 1000);
-
-      await createElectionOnChain(
-        newElection.title,
-        startTimestamp,
-        endTimestamp
+      // Step 1: Create on blockchain (user signs with MetaMask)
+      const result = await createCategory(
+        newCategory.name,
+        newCategory.description
       );
 
-      // Then save election settings to database
-      await api.updateElectionSettings({
-        title: newElection.title,
-        startDate: newElection.startDate,
-        endDate: newElection.endDate,
-        requireIdVerification: requireVerification,
-        showResultsDuringVoting: showResultsDuringVoting,
+      // Step 2: Sync to PostgreSQL database
+      const userId = getCurrentUserId();
+      const response = await fetch("http://localhost:3001/api/categories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userId ? { "x-user-id": userId } : {}),
+        },
+        body: JSON.stringify({
+          txHash: result.txHash,
+          categoryId: result.categoryId,
+          name: newCategory.name,
+          description: newCategory.description,
+        }),
       });
 
-      // CRITICAL: Force update status to 'Created' to unlock candidate management
-      await api.updateElectionStatus('Created');
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error("Backend error:", errorData);
+        throw new Error(`Database sync failed: ${errorData}`);
+      }
 
-      toast.success("Election created and reset successfully!");
+      setNewCategory({ name: "", description: "" });
+      toast.success("✅ Category created and saved to database!");
+      await loadAll();
+    } catch (err: any) {
+      console.error("Full error:", err);
+      const rawError = err?.message || JSON.stringify(err);
+      toast.error(`❌ ERROR: ${rawError}`);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
-      // Reload all data to reflect changes
-      await Promise.all([
-        fetchAdminData(),
-        loadElectionSettings()
-      ]);
-    } catch (error) {
-      console.error("Error creating election:", error);
-      toast.error("Failed to save election settings");
+  const handleDeleteCategory = async (categoryId: number) => {
+    const confirmed = window.confirm(
+      "Are you sure you want to delete this category? This will deactivate it on the blockchain."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setSubmitting(true);
+      toast.info("Deactivating category on blockchain...");
+
+      // Deactivate on blockchain using ethers directly
+      if (typeof window === "undefined" || !(window as any).ethereum) {
+        throw new Error("MetaMask is not installed");
+      }
+
+      const { ethers } = await import("ethers");
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+
+      const VotingSystemABI = (await import("../lib/VotingSystemABI")).default;
+      const CONTRACT_ADDRESS = (await import("../lib/blockchain"))
+        .CONTRACT_ADDRESS;
+
+      const contract = new ethers.Contract(
+        CONTRACT_ADDRESS,
+        VotingSystemABI,
+        signer
+      );
+      const tx = await contract.deactivateCategory(categoryId);
+      await tx.wait();
+
+      toast.success("✅ Category deleted!");
+      await loadAll();
+    } catch (err: any) {
+      console.error("Delete error:", err);
+      toast.error(parseBlockchainError(err));
     } finally {
       setSubmitting(false);
     }
@@ -226,31 +384,46 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   const handleAddCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
-
     try {
-      // Auto-assign Contract ID if not provided
-      const candidateToAdd = {
-        ...newCandidate,
-        contractId: newCandidate.contractId || String(adminData.candidates.length + 1)
-      };
+      setSubmitting(true);
+      if (!newCandidate.category) {
+        toast.error("Please select a category");
+        return;
+      }
+      // Find category ID from name
+      const category = categories.find((c) => c.name === newCandidate.category);
+      if (!category) {
+        toast.error("Invalid category selected");
+        return;
+      }
 
-      // CRITICAL: Derive the correct Category ID for blockchain
-      // Must match the logic used in CategoriesPage.tsx: name.toLowerCase().replace(/\s+/g, '-')
-      // CRITICAL: Derive the correct Category ID for blockchain
-      // Must match the logic used in CategoriesPage.tsx
-      const blockchainCategoryId = generateCategoryId(candidateToAdd.category);
-
-      // Add candidate to BLOCKCHAIN first
-      await addCandidateOnChain(
-        candidateToAdd.name,
-        candidateToAdd.position,
-        candidateToAdd.party,
-        blockchainCategoryId // Pass the ID, not the Name
+      // Step 1: Add to blockchain (user signs with MetaMask)
+      const result = await addCandidate(
+        category.id,
+        newCandidate.name,
+        newCandidate.party
       );
 
-      await api.addCandidate(candidateToAdd);
-      toast.success(`Candidate added to Blockchain and Database!`);
+      // Step 2: Sync to PostgreSQL database
+      const userId = getCurrentUserId();
+      const response = await fetch("http://localhost:3001/api/candidates", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userId ? { "x-user-id": userId } : {}),
+        },
+        body: JSON.stringify({
+          txHash: result.txHash,
+          candidateId: result.candidateId,
+          name: newCandidate.name,
+          party: newCandidate.party,
+          categoryName: newCandidate.category,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to sync candidate to database");
+      }
 
       setNewCandidate({
         name: "",
@@ -259,158 +432,64 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         category: "",
         contractId: "",
       });
-      fetchAdminData();
-    } catch (error) {
-      console.error("Error adding candidate:", error);
-      toast.error("Failed to add candidate");
+      toast.success("Candidate added and saved to database!");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleRemoveCandidate = async (candidateId: string) => {
+  const handleRemoveCandidate = async (candidateId: number) => {
     try {
-      const candidateToRemove = adminData.candidates.find(c => c.id === candidateId);
-
-      if (candidateToRemove && candidateToRemove.contractId) {
-        const cid = Number(candidateToRemove.contractId);
-        await import("../lib/blockchain").then(mod => mod.deactivateCandidateOnChain(cid));
+      setSubmitting(true);
+      // Find the candidate to get its categoryId
+      const candidate = candidates.find((c) => c.id === candidateId);
+      if (!candidate) {
+        toast.error("Candidate not found");
+        return;
       }
-
-      await api.removeCandidate(candidateId);
-      toast.success("Candidate removed from database.");
-      fetchAdminData();
-    } catch (error: any) {
-      console.error("Error removing candidate:", error);
-      // If it's a 404, it's already gone from DB, so just refresh
-      if (error.message && error.message.includes("Candidate not found")) {
-        toast.info("Candidate was already removed from database.");
-        fetchAdminData();
-      } else {
-        toast.error("Error removing candidate: " + error.message);
-      }
+      await deactivateCandidate(candidate.categoryId, candidateId);
+      toast.success("Candidate removed");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || "Failed to remove candidate");
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const exportVotersToExcel = (voters: any[]) => {
+    toast.info("Export feature - voter data is stored on blockchain");
+  };
+
+  const fetchAdminData = async () => {
+    await loadAll();
   };
 
   const handleSyncCandidates = async () => {
-    if (!window.confirm("This will add all local candidates to the current blockchain contract. Only do this if the contract is empty/redeployed. Continue?")) {
-      return;
-    }
-
-    setSubmitting(true);
-    let successCount = 0;
-    let failCount = 0;
-
-    try {
-      const candidatesToSync = adminData.candidates;
-
-      if (candidatesToSync.length === 0) {
-        toast.info("No candidates to sync!");
-        return;
-      }
-
-      toast.info(`Starting sync for ${candidatesToSync.length} candidates...`);
-
-      // Dynamically import to ensure we get the latest
-      const blockchain = await import("../lib/blockchain");
-
-      for (const candidate of candidatesToSync) {
-        try {
-          // Add to blockchain
-          // Ensure category is formatted correctly (slug)
-          const categoryId = candidate.category.toLowerCase().replace(/\s+/g, '-');
-
-          await blockchain.addCandidateOnChain(
-            candidate.name,
-            candidate.position,
-            candidate.party,
-            categoryId // contract expects category ID
-          );
-          successCount++;
-          toast.success(`Synced: ${candidate.name}`);
-        } catch (err) {
-          console.error(`Failed to sync ${candidate.name}`, err);
-          failCount++;
-          toast.error(`Failed: ${candidate.name}`);
-        }
-      }
-
-      toast.success(`Sync Complete! Success: ${successCount}, Failed: ${failCount}`);
-      // Refresh to maybe match IDs? 
-      // Actually we don't strictly need to update local IDs if VotePage matches by name.
-      await fetchAdminData();
-
-    } catch (error) {
-      console.error("Error syncing candidates:", error);
-      toast.error("Sync process failed.");
-    } finally {
-      setSubmitting(false);
-    }
+    toast.info("Candidates are automatically synced to blockchain");
   };
 
-  const handleStartElection = async () => {
-    setSubmitting(true);
-
-    try {
-      // First, check if there are unsaved changes and save them
-      if (newElection.title || newElection.startDate || newElection.endDate) {
-        await api.updateElectionSettings({
-          title: newElection.title,
-          startDate: newElection.startDate,
-          endDate: newElection.endDate,
-          requireIdVerification: requireVerification,
-          showResultsDuringVoting: showResultsDuringVoting,
-        });
-      }
-
-      // CRITICAL: Start election on BLOCKCHAIN first
-      toast.info("Starting election on blockchain...");
-      await startElectionOnChain();
-
-      // Then update database status
-      await api.startElection();
-
-      toast.success("Election started successfully!");
-      await fetchAdminData();
-    } catch (error) {
-      console.error("Error starting election:", error);
-      toast.error("Failed to start election");
-    } finally {
-      setSubmitting(false);
-    }
+  // Format dates
+  const formatDate = (timestamp: number) => {
+    if (!timestamp) return "TBD";
+    return new Date(timestamp * 1000).toLocaleDateString("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    });
   };
 
-  const handleEndElection = async () => {
-    setSubmitting(true);
-
-    try {
-      // CRITICAL: End election on BLOCKCHAIN first
-      toast.info("Ending election on blockchain...");
-      await endElectionOnChain();
-
-      // Then update database
-      await api.endElection();
-
-      toast.success("Election ended successfully!");
-      await fetchAdminData();
-    } catch (error) {
-      console.error("Error ending election:", error);
-      toast.error("Failed to end election");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const formatDateTime = (dateString: string): string => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
+  const formatDateTime = (dateString: string) => {
+    if (!dateString) return "TBD";
+    return new Date(dateString).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     });
   };
 
@@ -427,18 +506,52 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   return (
     <AuthGuard requireAdmin={true} onNavigate={onNavigate}>
-      <div className="min-h-screen bg-slate-50">
+      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
         {/* Header */}
-        <header className="bg-white border-b sticky top-0 z-50">
-          <div className="container mx-auto px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <img src={apuLogo} alt="APU Logo" className="h-10 w-10" />
-              <h2 className="text-slate-900">Admin Dashboard</h2>
-              <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200">
-                Administrator
+        <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
+            <div className="flex items-center gap-2 w-48">
+              <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
+              <span className="text-slate-900">Admin</span>
+              <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs">
+                Admin
               </Badge>
             </div>
-            <UserNav onNavigate={onNavigate} />
+            <nav className="hidden md:flex gap-6 flex-1 justify-center">
+              <button
+                onClick={() => onNavigate("home")}
+                className="text-sm font-normal transition-colors hover:text-primary"
+              >
+                Home
+              </button>
+              <button
+                onClick={() => onNavigate("vote")}
+                className="text-sm font-normal transition-colors hover:text-primary"
+              >
+                Elections
+              </button>
+              <button
+                onClick={() => onNavigate("results")}
+                className="text-sm font-normal transition-colors hover:text-primary"
+              >
+                Results
+              </button>
+              <button
+                onClick={() => onNavigate("about")}
+                className="text-sm font-normal transition-colors hover:text-primary"
+              >
+                About
+              </button>
+              <button
+                onClick={() => onNavigate("contact")}
+                className="text-sm font-normal transition-colors hover:text-primary"
+              >
+                Contact
+              </button>
+            </nav>
+            <div className="flex items-center gap-3 w-48 justify-end">
+              <UserNav onNavigate={onNavigate} />
+            </div>
           </div>
         </header>
 
@@ -446,17 +559,28 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           <div className="flex flex-col max-w-6xl mx-auto">
             <div className="w-full mb-8">
               <div className="mb-4">
-                <Button variant="ghost" size="sm" className="gap-1" onClick={() => onNavigate('home')}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => onNavigate("home")}
+                >
                   <ArrowLeft className="h-4 w-4" />
                   Back to Home
                 </Button>
               </div>
 
               <div className="flex items-center gap-3 mb-2">
-                <img src={apuLogo} alt="Asia Pacific University Logo" className="h-10 w-auto" />
+                <img
+                  src={apuLogo}
+                  alt="Asia Pacific University Logo"
+                  className="h-10 w-auto"
+                />
                 <h1 className="text-slate-900">Admin Dashboard</h1>
               </div>
-              <p className="text-slate-600">Manage elections, candidates, and monitor voting activity</p>
+              <p className="text-slate-600">
+                Manage elections, candidates, and monitor voting activity
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -466,13 +590,22 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline justify-between">
-                    <div className="text-slate-900">{adminData.registeredVoters}</div>
-                    <div className="text-slate-600">of {adminData.totalVoters} eligible</div>
+                    <div className="text-slate-900">
+                      {adminData.registeredVoters}
+                    </div>
+                    <div className="text-slate-600">
+                      of {adminData.totalVoters} eligible
+                    </div>
                   </div>
                   <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
                     <div
                       className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${(adminData.registeredVoters / adminData.totalVoters) * 100}%` }}
+                      style={{
+                        width: `${
+                          (adminData.registeredVoters / adminData.totalVoters) *
+                          100
+                        }%`,
+                      }}
                     ></div>
                   </div>
                 </CardContent>
@@ -482,16 +615,46 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                   <CardTitle>Votes Cast</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex items-baseline justify-between">
-                    <div className="text-slate-900">{adminData.votesCount}</div>
-                    <div className="text-slate-600">of {adminData.registeredVoters} registered</div>
-                  </div>
-                  <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{ width: `${(adminData.votesCount / adminData.registeredVoters) * 100}%` }}
-                    ></div>
-                  </div>
+                  {(() => {
+                    // Calculate expected total votes
+                    // Each registered voter can vote once per category
+                    const numberOfCategories = categories.length || 1;
+                    const expectedTotalVotes =
+                      adminData.registeredVoters * numberOfCategories;
+                    const completionPercentage =
+                      expectedTotalVotes > 0
+                        ? (adminData.votesCount / expectedTotalVotes) * 100
+                        : 0;
+
+                    return (
+                      <>
+                        <div className="flex items-baseline justify-between">
+                          <div className="text-slate-900">
+                            {adminData.votesCount}
+                          </div>
+                          <div className="text-slate-600">
+                            of {expectedTotalVotes} possible votes
+                          </div>
+                        </div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {adminData.registeredVoters} voters ×{" "}
+                          {numberOfCategories}{" "}
+                          {numberOfCategories === 1 ? "category" : "categories"}
+                        </div>
+                        <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
+                          <div
+                            className="h-full rounded-full bg-emerald-500"
+                            style={{
+                              width: `${Math.min(
+                                completionPercentage,
+                                100
+                              ).toFixed(1)}%`,
+                            }}
+                          />
+                        </div>
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
               <Card>
@@ -500,12 +663,16 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-slate-900">{adminData.electionStatus}</div>
+                    <div className="text-slate-900">
+                      {adminData.electionStatus}
+                    </div>
                     <div className="flex items-center">
                       {adminData.electionStatus === "Active" ? (
                         <CheckCircle2 className="h-5 w-5 text-emerald-500" />
                       ) : adminData.electionStatus === "Ended" ? (
                         <Lock className="h-5 w-5 text-gray-500" />
+                      ) : adminData.electionStatus === "Setup Phase" ? (
+                        <Clock className="h-5 w-5 text-blue-500" />
                       ) : (
                         <Clock className="h-5 w-5 text-amber-500" />
                       )}
@@ -516,7 +683,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       size="sm"
                       onClick={handleStartElection}
                       disabled={submitting}
-                      className="bg-blue-600 hover:bg-blue-700"
+                      className="bg-emerald-600 hover:bg-emerald-700"
                     >
                       Start Election
                     </Button>
@@ -524,7 +691,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       size="sm"
                       variant="outline"
                       onClick={handleEndElection}
-                      disabled={adminData.electionStatus !== "Active" || submitting}
+                      disabled={
+                        (adminData.electionStatus !== "Active" &&
+                          adminData.electionStatus !== "Setup Phase") ||
+                        submitting
+                      }
                     >
                       End Election
                     </Button>
@@ -533,7 +704,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               </Card>
             </div>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
               <TabsList className="grid grid-cols-5 mb-8">
                 <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                 <TabsTrigger value="candidates">Candidates</TabsTrigger>
@@ -546,27 +721,39 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Election Overview</CardTitle>
-                    <CardDescription>Current election status and statistics</CardDescription>
+                    <CardDescription>
+                      Current election status and statistics
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-8">
                       <div className="flex items-center justify-between">
                         <div className="space-y-1">
-                          <p className="text-slate-900">{adminData.electionTitle}</p>
+                          <p className="text-slate-900">
+                            {adminData.electionTitle}
+                          </p>
                           <p className="text-slate-600">
                             {adminData.startDate && adminData.endDate
-                              ? `${formatDateTime(adminData.startDate)} - ${formatDateTime(adminData.endDate)}`
+                              ? `${formatDateTime(
+                                  adminData.startDate
+                                )} - ${formatDateTime(adminData.endDate)}`
                               : "No dates set"}
                           </p>
                         </div>
-                        <Button variant="outline" size="sm" onClick={() => onNavigate('results')}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => onNavigate("results")}
+                        >
                           <BarChart3 className="h-4 w-4 mr-2" />
                           View Results
                         </Button>
                       </div>
 
                       <div>
-                        <h3 className="text-slate-900 mb-4">Recent Activity (Last Hour)</h3>
+                        <h3 className="text-slate-900 mb-4">
+                          Recent Activity (Last Hour)
+                        </h3>
                         <div className="space-y-4">
                           {adminData.activities.length === 0 ? (
                             <div className="text-center py-8 text-slate-500">
@@ -575,7 +762,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             </div>
                           ) : (
                             adminData.activities.map((activity) => (
-                              <div key={activity.id} className="flex items-start gap-4">
+                              <div
+                                key={activity.id}
+                                className="flex items-start gap-4"
+                              >
                                 <div className="rounded-full bg-emerald-100 p-2">
                                   {activity.type === "voter_registered" ? (
                                     <Users className="h-4 w-4 text-emerald-600" />
@@ -588,8 +778,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                                   )}
                                 </div>
                                 <div>
-                                  <p className="text-slate-900">{activity.description}</p>
-                                  <p className="text-slate-600">{new Date(activity.timestamp).toLocaleTimeString()}</p>
+                                  <p className="text-slate-900">
+                                    {activity.description}
+                                  </p>
+                                  <p className="text-slate-600">
+                                    {new Date(
+                                      activity.timestamp
+                                    ).toLocaleTimeString()}
+                                  </p>
                                 </div>
                               </div>
                             ))
@@ -605,35 +801,27 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Manage Candidates</CardTitle>
-                    <CardDescription>Add or remove candidates for the election</CardDescription>
+                    <CardDescription>
+                      Add or remove candidates for the election
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <form onSubmit={handleAddCandidate} className="space-y-4 mb-8">
+                    <form
+                      onSubmit={handleAddCandidate}
+                      className="space-y-4 mb-8"
+                    >
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="name">Candidate Name</Label>
                           <Input
                             id="name"
                             value={newCandidate.name}
-                            onChange={(e) => setNewCandidate({ ...newCandidate, name: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="position">Position</Label>
-                          <Input
-                            id="position"
-                            value={newCandidate.position}
-                            onChange={(e) => setNewCandidate({ ...newCandidate, position: e.target.value })}
-                            required
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="party">Party/Affiliation</Label>
-                          <Input
-                            id="party"
-                            value={newCandidate.party}
-                            onChange={(e) => setNewCandidate({ ...newCandidate, party: e.target.value })}
+                            onChange={(e) =>
+                              setNewCandidate({
+                                ...newCandidate,
+                                name: e.target.value,
+                              })
+                            }
                             required
                           />
                         </div>
@@ -641,7 +829,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           <Label htmlFor="category">Category</Label>
                           <Select
                             value={newCandidate.category}
-                            onValueChange={(value: string) => setNewCandidate({ ...newCandidate, category: value })}
+                            onValueChange={(value: string) =>
+                              setNewCandidate({
+                                ...newCandidate,
+                                category: value,
+                                position: value, // Auto-set position to match category
+                              })
+                            }
                             required
                           >
                             <SelectTrigger className="w-full">
@@ -649,7 +843,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             </SelectTrigger>
                             <SelectContent>
                               {categories.map((category) => (
-                                <SelectItem key={category.id} value={category.name}>
+                                <SelectItem
+                                  key={category.id}
+                                  value={category.name}
+                                >
                                   {category.name}
                                 </SelectItem>
                               ))}
@@ -657,18 +854,25 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           </Select>
                         </div>
                         <div className="space-y-2">
-                          <Label htmlFor="contractId">Contract ID (Optional)</Label>
+                          <Label htmlFor="party">Party/Affiliation</Label>
                           <Input
-                            id="contractId"
-                            type="number"
-                            placeholder={`Auto: ${adminData.candidates.length}`}
-                            value={newCandidate.contractId}
-                            onChange={(e) => setNewCandidate({ ...newCandidate, contractId: e.target.value })}
+                            id="party"
+                            value={newCandidate.party}
+                            onChange={(e) =>
+                              setNewCandidate({
+                                ...newCandidate,
+                                party: e.target.value,
+                              })
+                            }
+                            required
                           />
-                          <p className="text-xs text-slate-500">Leave empty to auto-assign the next ID ({adminData.candidates.length})</p>
                         </div>
                       </div>
-                      <Button type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
+                      <Button
+                        type="submit"
+                        disabled={submitting}
+                        className="bg-slate-900 hover:bg-slate-800 text-white"
+                      >
                         {submitting ? (
                           <>
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -681,37 +885,45 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           </>
                         )}
                       </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleSyncCandidates}
-                        disabled={submitting}
-                        className="ml-2"
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Sync to Chain
-                      </Button>
                     </form>
 
                     <div>
-                      <h3 className="text-slate-900 mb-4">Current Candidates</h3>
+                      <h3 className="text-slate-900 mb-4">
+                        Current Candidates
+                      </h3>
                       <Table>
                         <TableHeader>
                           <TableRow>
                             <TableHead>Name</TableHead>
                             <TableHead>Position</TableHead>
                             <TableHead>Party</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
+                            <TableHead className="text-right">
+                              Actions
+                            </TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
                           {adminData.candidates.map((candidate) => (
-                            <TableRow key={candidate.id}>
-                              <TableCell className="text-slate-900">{candidate.name}</TableCell>
-                              <TableCell className="text-slate-600">{candidate.position}</TableCell>
-                              <TableCell className="text-slate-600">{candidate.party}</TableCell>
+                            <TableRow
+                              key={`${candidate.position}-${candidate.id}`}
+                            >
+                              <TableCell className="text-slate-900">
+                                {candidate.name}
+                              </TableCell>
+                              <TableCell className="text-slate-600">
+                                {candidate.position}
+                              </TableCell>
+                              <TableCell className="text-slate-600">
+                                {candidate.party}
+                              </TableCell>
                               <TableCell className="text-right">
-                                <Button variant="ghost" size="sm" onClick={() => handleRemoveCandidate(candidate.id)}>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() =>
+                                    handleRemoveCandidate(candidate.id)
+                                  }
+                                >
                                   <Trash2 className="h-4 w-4 text-red-500" />
                                 </Button>
                               </TableCell>
@@ -728,13 +940,22 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Registered Voters</CardTitle>
-                    <CardDescription>View and manage registered voters</CardDescription>
+                    <CardDescription>
+                      View and manage registered voters
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="flex justify-between items-center mb-6">
                       <div className="flex gap-2">
-                        <Input placeholder="Search voters..." className="w-64" />
-                        <Button variant="outline" size="sm" onClick={fetchAdminData}>
+                        <Input
+                          placeholder="Search voters..."
+                          className="w-64"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={fetchAdminData}
+                        >
                           <RefreshCw className="h-4 w-4 mr-2" />
                           Refresh
                         </Button>
@@ -762,10 +983,20 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       <TableBody>
                         {adminData.voters.map((voter) => (
                           <TableRow key={voter.id}>
-                            <TableCell className="text-slate-900">{voter.studentId}</TableCell>
-                            <TableCell className="font-mono text-slate-600">{voter.walletAddress.substring(0, 10)}...</TableCell>
-                            <TableCell className="text-slate-600">{voter.department}</TableCell>
-                            <TableCell className="text-slate-600">{new Date(voter.registrationDate).toLocaleDateString()}</TableCell>
+                            <TableCell className="text-slate-900">
+                              {voter.studentId}
+                            </TableCell>
+                            <TableCell className="font-mono text-slate-600">
+                              {voter.walletAddress.substring(0, 10)}...
+                            </TableCell>
+                            <TableCell className="text-slate-600">
+                              {voter.department}
+                            </TableCell>
+                            <TableCell className="text-slate-600">
+                              {new Date(
+                                voter.registrationDate
+                              ).toLocaleDateString()}
+                            </TableCell>
                             <TableCell>
                               {voter.hasVoted ? (
                                 <CheckCircle2 className="h-4 w-4 text-emerald-500" />
@@ -785,15 +1016,106 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Voting Categories</CardTitle>
-                    <CardDescription>Manage voting categories and positions</CardDescription>
+                    <CardDescription>
+                      Manage voting categories and positions
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-center py-8">
-                      <p className="text-slate-600 mb-4">Manage all voting categories and positions from the dedicated page.</p>
-                      <Button onClick={() => onNavigate('manage-categories')} className="bg-blue-600 hover:bg-blue-700">
-                        <Plus className="mr-2 h-4 w-4" />
-                        Manage Categories
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleCreateCategory();
+                      }}
+                      className="space-y-4 mb-6"
+                    >
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="categoryName">Category Name</Label>
+                          <Input
+                            id="categoryName"
+                            placeholder="e.g., President, Secretary"
+                            value={newCategory.name}
+                            onChange={(e) =>
+                              setNewCategory({
+                                ...newCategory,
+                                name: e.target.value,
+                              })
+                            }
+                            required
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="categoryDescription">
+                            Description
+                          </Label>
+                          <Input
+                            id="categoryDescription"
+                            placeholder="Describe this position"
+                            value={newCategory.description}
+                            onChange={(e) =>
+                              setNewCategory({
+                                ...newCategory,
+                                description: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <Button
+                        type="submit"
+                        disabled={submitting || !newCategory.name}
+                        className="bg-emerald-600 hover:bg-emerald-700"
+                      >
+                        {submitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Adding...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Category
+                          </>
+                        )}
                       </Button>
+                    </form>
+
+                    <div className="space-y-4">
+                      <h3 className="font-semibold">Existing Categories</h3>
+                      {categories.length === 0 ? (
+                        <p className="text-center text-slate-500 py-8">
+                          No categories yet. Add your first category above.
+                        </p>
+                      ) : (
+                        <div className="space-y-2">
+                          {categories.map((category) => (
+                            <div
+                              key={category.id}
+                              className="flex items-center justify-between p-4 border rounded-lg hover:bg-slate-50"
+                            >
+                              <div>
+                                <p className="text-sm font-medium">
+                                  {category.name}
+                                </p>
+                                <p className="text-sm text-slate-600">
+                                  {category.description}
+                                </p>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  handleDeleteCategory(category.id)
+                                }
+                                disabled={submitting}
+                                className="text-red-500 hover:text-red-600 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -803,7 +1125,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 <Card>
                   <CardHeader>
                     <CardTitle>Election Settings</CardTitle>
-                    <CardDescription>Configure election parameters</CardDescription>
+                    <CardDescription>
+                      Configure election parameters
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <form onSubmit={handleCreateElection} className="space-y-6">
@@ -812,7 +1136,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         <Input
                           id="title"
                           value={newElection.title}
-                          onChange={(e) => setNewElection({ ...newElection, title: e.target.value })}
+                          onChange={(e) =>
+                            setNewElection({
+                              ...newElection,
+                              title: e.target.value,
+                            })
+                          }
                           required
                         />
                       </div>
@@ -823,7 +1152,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             id="startDate"
                             type="datetime-local"
                             value={newElection.startDate}
-                            onChange={(e) => setNewElection({ ...newElection, startDate: e.target.value })}
+                            onChange={(e) =>
+                              setNewElection({
+                                ...newElection,
+                                startDate: e.target.value,
+                              })
+                            }
                             required
                           />
                         </div>
@@ -833,14 +1167,21 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             id="endDate"
                             type="datetime-local"
                             value={newElection.endDate}
-                            onChange={(e) => setNewElection({ ...newElection, endDate: e.target.value })}
+                            onChange={(e) =>
+                              setNewElection({
+                                ...newElection,
+                                endDate: e.target.value,
+                              })
+                            }
                             required
                           />
                         </div>
                       </div>
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <Label htmlFor="allowResults">Show Results During Voting</Label>
+                          <Label htmlFor="allowResults">
+                            Show Results During Voting
+                          </Label>
                           <Switch
                             id="allowResults"
                             checked={showResultsDuringVoting}
@@ -854,7 +1195,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         </p>
                       </div>
                       <div className="flex gap-3">
-                        <Button type="submit" disabled={submitting} className="bg-blue-600 hover:bg-blue-700">
+                        <Button
+                          type="submit"
+                          disabled={submitting}
+                          className="bg-blue-600 hover:bg-blue-700"
+                        >
                           {submitting ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -867,9 +1212,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         <Button
                           type="button"
                           variant="default"
-                          className="bg-blue-500 hover:bg-blue-600"
+                          className="bg-emerald-600 hover:bg-emerald-700"
                           onClick={handleStartElection}
-                          disabled={submitting || adminData.electionStatus === "Active"}
+                          disabled={
+                            submitting || adminData.electionStatus === "Active"
+                          }
                         >
                           Start Election
                         </Button>
@@ -877,9 +1224,30 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           type="button"
                           variant="outline"
                           onClick={handleEndElection}
-                          disabled={submitting || adminData.electionStatus !== "Active"}
+                          disabled={
+                            submitting || adminData.electionStatus !== "Active"
+                          }
                         >
                           End Election
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={handleResetSystem}
+                          disabled={submitting}
+                        >
+                          {submitting ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Resetting...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Reset System
+                            </>
+                          )}
                         </Button>
                       </div>
                     </form>

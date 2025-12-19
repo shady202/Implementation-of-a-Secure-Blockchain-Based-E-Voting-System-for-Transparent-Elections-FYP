@@ -1,0 +1,19 @@
+SELECT * FROM elections ORDER BY created_at DESC;
+
+
+-- check all tables
+SELECT 'Elections' as table_name, COUNT(*)::text as count FROM elections
+UNION ALL
+SELECT 'Categories', COUNT(*)::text FROM categories
+UNION ALL
+SELECT 'Candidates', COUNT(*)::text FROM candidates
+UNION ALL
+SELECT 'Voters', COUNT(*)::text FROM voters;
+
+
+
+
+SELECT column_name, data_type 
+FROM information_schema.columns 
+WHERE table_name = 'categories'
+ORDER BY ordinal_position;

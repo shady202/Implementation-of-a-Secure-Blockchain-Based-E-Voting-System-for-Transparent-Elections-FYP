@@ -1,6 +1,35 @@
 // ABI for the VotingSystem smart contract
 const VotingSystemABI = [
   {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        internalType: "string",
+        name: "name",
+        type: "string",
+      },
+      {
+        internalType: "string",
+        name: "party",
+        type: "string",
+      },
+    ],
+    name: "addCandidate",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "newCandidateId",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     inputs: [],
     stateMutability: "nonpayable",
     type: "constructor",
@@ -8,6 +37,12 @@ const VotingSystemABI = [
   {
     anonymous: false,
     inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
       {
         indexed: true,
         internalType: "uint256",
@@ -20,15 +55,163 @@ const VotingSystemABI = [
         name: "name",
         type: "string",
       },
-      {
-        indexed: false,
-        internalType: "string",
-        name: "position",
-        type: "string",
-      },
     ],
     name: "CandidateAdded",
     type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "candidateId",
+        type: "uint256",
+      },
+    ],
+    name: "CandidateDeactivated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "name",
+        type: "string",
+      },
+    ],
+    name: "CategoryCreated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+    ],
+    name: "CategoryDeactivated",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        indexed: false,
+        internalType: "string",
+        name: "name",
+        type: "string",
+      },
+      {
+        indexed: false,
+        internalType: "bool",
+        name: "isActive",
+        type: "bool",
+      },
+    ],
+    name: "CategoryUpdated",
+    type: "event",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "name",
+        type: "string",
+      },
+      {
+        internalType: "string",
+        name: "description",
+        type: "string",
+      },
+    ],
+    name: "createCategory",
+    outputs: [
+      {
+        internalType: "uint256",
+        name: "newCategoryId",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "title",
+        type: "string",
+      },
+      {
+        internalType: "uint256",
+        name: "startTime",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "endTime",
+        type: "uint256",
+      },
+    ],
+    name: "createElection",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "candidateId",
+        type: "uint256",
+      },
+    ],
+    name: "deactivateCandidate",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+    ],
+    name: "deactivateCategory",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
   },
   {
     anonymous: false,
@@ -82,6 +265,109 @@ const VotingSystemABI = [
     type: "event",
   },
   {
+    inputs: [],
+    name: "endElection",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "string",
+        name: "studentId",
+        type: "string",
+      },
+      {
+        internalType: "string",
+        name: "department",
+        type: "string",
+      },
+      {
+        internalType: "uint256",
+        name: "yearOfStudy",
+        type: "uint256",
+      },
+    ],
+    name: "registerVoter",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "resetSystem",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "startElection",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "timestamp",
+        type: "uint256",
+      },
+    ],
+    name: "SystemReset",
+    type: "event",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        internalType: "string",
+        name: "name",
+        type: "string",
+      },
+      {
+        internalType: "string",
+        name: "description",
+        type: "string",
+      },
+      {
+        internalType: "bool",
+        name: "isActive",
+        type: "bool",
+      },
+    ],
+    name: "updateCategory",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "candidateId",
+        type: "uint256",
+      },
+    ],
+    name: "vote",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
     anonymous: false,
     inputs: [
       {
@@ -93,14 +379,14 @@ const VotingSystemABI = [
       {
         indexed: true,
         internalType: "uint256",
-        name: "candidateId",
+        name: "categoryId",
         type: "uint256",
       },
       {
-        indexed: false,
-        internalType: "string",
-        name: "position",
-        type: "string",
+        indexed: true,
+        internalType: "uint256",
+        name: "candidateId",
+        type: "uint256",
       },
     ],
     name: "VoteCast",
@@ -126,62 +412,6 @@ const VotingSystemABI = [
     type: "event",
   },
   {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_name",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_position",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_party",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_category",
-        type: "string",
-      },
-    ],
-    name: "addCandidate",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_id",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_name",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_description",
-        type: "string",
-      },
-      {
-        internalType: "string[]",
-        name: "_positions",
-        type: "string[]",
-      },
-    ],
-    name: "addCategory",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
     inputs: [],
     name: "admin",
     outputs: [
@@ -195,91 +425,8 @@ const VotingSystemABI = [
     type: "function",
   },
   {
-    inputs: [
-      {
-        internalType: "uint256",
-        name: "",
-        type: "uint256",
-      },
-    ],
-    name: "candidatesById",
-    outputs: [
-      {
-        internalType: "uint256",
-        name: "id",
-        type: "uint256",
-      },
-      {
-        internalType: "string",
-        name: "name",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "position",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "party",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "voteCount",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "",
-        type: "uint256",
-      },
-    ],
-    name: "candidatesByPosition",
-    outputs: [
-      {
-        internalType: "uint256",
-        name: "id",
-        type: "uint256",
-      },
-      {
-        internalType: "string",
-        name: "name",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "position",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "party",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "voteCount",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
     inputs: [],
-    name: "candidateCount",
+    name: "categoryCount",
     outputs: [
       {
         internalType: "uint256",
@@ -288,29 +435,6 @@ const VotingSystemABI = [
       },
     ],
     stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_title",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "_startTime",
-        type: "uint256",
-      },
-      {
-        internalType: "uint256",
-        name: "_endTime",
-        type: "uint256",
-      },
-    ],
-    name: "createElection",
-    outputs: [],
-    stateMutability: "nonpayable",
     type: "function",
   },
   {
@@ -353,64 +477,39 @@ const VotingSystemABI = [
   },
   {
     inputs: [],
-    name: "endElection",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "uint256",
-        name: "_candidateId",
-        type: "uint256",
-      },
-    ],
-    name: "getCandidate",
+    name: "getAllCategories",
     outputs: [
       {
-        internalType: "uint256",
-        name: "id",
-        type: "uint256",
-      },
-      {
-        internalType: "string",
-        name: "name",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "position",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "party",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "voteCount",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_position",
-        type: "string",
-      },
-    ],
-    name: "getCandidateCountForPosition",
-    outputs: [
-      {
-        internalType: "uint256",
+        components: [
+          {
+            internalType: "uint256",
+            name: "id",
+            type: "uint256",
+          },
+          {
+            internalType: "string",
+            name: "name",
+            type: "string",
+          },
+          {
+            internalType: "string",
+            name: "description",
+            type: "string",
+          },
+          {
+            internalType: "bool",
+            name: "isActive",
+            type: "bool",
+          },
+          {
+            internalType: "bool",
+            name: "exists",
+            type: "bool",
+          },
+        ],
+        internalType: "struct VotingSystem.Category[]",
         name: "",
-        type: "uint256",
+        type: "tuple[]",
       },
     ],
     stateMutability: "view",
@@ -419,35 +518,16 @@ const VotingSystemABI = [
   {
     inputs: [
       {
-        internalType: "string",
-        name: "_position",
-        type: "string",
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
       },
     ],
-    name: "getCandidatesForPosition",
+    name: "getCandidatesForCategory",
     outputs: [
       {
         internalType: "uint256[]",
-        name: "",
-        type: "uint256[]",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_position",
-        type: "string",
-      },
-    ],
-    name: "getElectionResults",
-    outputs: [
-      {
-        internalType: "uint256[]",
-        name: "candidateIds",
+        name: "ids",
         type: "uint256[]",
       },
       {
@@ -462,57 +542,8 @@ const VotingSystemABI = [
       },
       {
         internalType: "uint256[]",
-        name: "voteCounts",
+        name: "votes",
         type: "uint256[]",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "getElectionStats",
-    outputs: [
-      {
-        internalType: "uint256",
-        name: "totalRegisteredVoters",
-        type: "uint256",
-      },
-      {
-        internalType: "uint256",
-        name: "totalVotesCast",
-        type: "uint256",
-      },
-      {
-        internalType: "enum VotingSystem.ElectionState",
-        name: "electionState",
-        type: "uint8",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "getPositions",
-    outputs: [
-      {
-        internalType: "string[]",
-        name: "",
-        type: "string[]",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "getCategories",
-    outputs: [
-      {
-        internalType: "string[]",
-        name: "",
-        type: "string[]",
       },
     ],
     stateMutability: "view",
@@ -521,17 +552,17 @@ const VotingSystemABI = [
   {
     inputs: [
       {
-        internalType: "string",
-        name: "_id",
-        type: "string",
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
       },
     ],
-    name: "getCategoryDetails",
+    name: "getCategory",
     outputs: [
       {
-        internalType: "string",
+        internalType: "uint256",
         name: "id",
-        type: "string",
+        type: "uint256",
       },
       {
         internalType: "string",
@@ -542,11 +573,6 @@ const VotingSystemABI = [
         internalType: "string",
         name: "description",
         type: "string",
-      },
-      {
-        internalType: "string[]",
-        name: "positions",
-        type: "string[]",
       },
       {
         internalType: "bool",
@@ -560,30 +586,17 @@ const VotingSystemABI = [
   {
     inputs: [
       {
-        internalType: "string",
-        name: "_id",
-        type: "string",
-      },
-    ],
-    name: "removeCategory",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
         internalType: "address",
-        name: "_voter",
+        name: "voter",
         type: "address",
       },
       {
-        internalType: "string",
-        name: "_position",
-        type: "string",
+        internalType: "uint256",
+        name: "categoryId",
+        type: "uint256",
       },
     ],
-    name: "hasVotedForPosition",
+    name: "hasVotedInCategory",
     outputs: [
       {
         internalType: "bool",
@@ -592,48 +605,6 @@ const VotingSystemABI = [
       },
     ],
     stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "uint256",
-        name: "",
-        type: "uint256",
-      },
-    ],
-    name: "positions",
-    outputs: [
-      {
-        internalType: "string",
-        name: "",
-        type: "string",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "string",
-        name: "_studentId",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "_department",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "_yearOfStudy",
-        type: "uint256",
-      },
-    ],
-    name: "registerVoter",
-    outputs: [],
-    stateMutability: "nonpayable",
     type: "function",
   },
   {
@@ -655,65 +626,5 @@ const VotingSystemABI = [
     stateMutability: "view",
     type: "function",
   },
-  {
-    inputs: [],
-    name: "startElection",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "uint256",
-        name: "_candidateId",
-        type: "uint256",
-      },
-    ],
-    name: "vote",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    name: "voters",
-    outputs: [
-      {
-        internalType: "string",
-        name: "studentId",
-        type: "string",
-      },
-      {
-        internalType: "string",
-        name: "department",
-        type: "string",
-      },
-      {
-        internalType: "uint256",
-        name: "yearOfStudy",
-        type: "uint256",
-      },
-      {
-        internalType: "bool",
-        name: "isRegistered",
-        type: "bool",
-      },
-      {
-        internalType: "bool",
-        name: "hasVoted",
-        type: "bool",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-]
-
-export default VotingSystemABI
+];
+export default VotingSystemABI;

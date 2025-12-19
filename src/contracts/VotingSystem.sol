@@ -1,568 +1,438 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-/**
- * @title University Election Voting System
- * @dev Smart contract for managing university elections with secure voting
- */
 contract VotingSystem {
-    // Election status enum
-    enum ElectionState { Created, Active, Ended }
+    enum ElectionState { None, Created, Active, Ended }
 
-    // Candidate struct
-    struct Candidate {
-        uint256 id;            // unique numeric ID
-        string name;           // candidate’s name
-        string position;       // role (e.g., President)
-        string party;          // political group or affiliation
-        uint256 voteCount;     // number of votes received
-        string categoryId;     // category this candidate belongs to
-        bool isActive;         // soft delete flag
-    }
-
-    // Voter struct
-    struct Voter {
-        string studentId;                        // unique university ID
-        string department;                       // academic department
-        uint256 yearOfStudy;                     // e.g., 1, 2, 3, or 4
-        bool isRegistered;                       // true if registered to vote
-        bool hasVoted;                           // true if has voted at least once
-        mapping(string => bool) votedForPosition; // track if voter already voted for a specific position
-    }
-
-    // Election struct
     struct Election {
-        string title;           // name of the election
-        uint256 startTime;      // start timestamp (UNIX)
-        uint256 endTime;        // end timestamp (UNIX)
-        ElectionState state;    // current phase (Created/Active/Ended)
-        uint256 totalVoters;    // number of registered voters
-        uint256 totalVotes;     // total votes cast (unique voters who voted at least once)
+        string title;
+        uint256 startTime;
+        uint256 endTime;
+        ElectionState state;
+        uint256 totalVoters;
+        uint256 totalVotes; // total votes cast (each category vote counts)
     }
 
-    // Voting category struct
-    struct VotingCategory {
-        string id;
+    struct Category {
+        uint256 id;          // auto-generated: 1,2,3...
         string name;
         string description;
-        string[] positions; // positions under this category
-        bool isActive;      // soft delete flag
+        bool isActive;
+        bool exists;
     }
 
-    // Contract state variables
+    struct Candidate {
+        uint256 id;          // sub-id within the category (1..n)
+        string name;
+        string party;
+        uint256 voteCount;
+        bool isActive;
+        bool exists;
+    }
+
+    struct Voter {
+        string studentId;
+        string department;
+        uint256 yearOfStudy;
+        bool isRegistered;
+        mapping(uint256 => bool) votedInCategory; // categoryId => voted?
+    }
+
     address public admin;
     Election public currentElection;
 
-    mapping(address => Voter) public voters;
-    mapping(string => Candidate[]) public candidatesByPosition;
-    string[] public positions;
-
-    mapping(uint256 => Candidate) public candidatesById;
-    uint256 public candidateCount;
+    // voters
+    mapping(address => Voter) private voters;
     address[] public registeredVoters;
 
-    mapping(string => VotingCategory) public categories;
-    string[] public categoryIds;
+    // categories
     uint256 public categoryCount;
+    mapping(uint256 => Category) private categories;
+    uint256[] private categoryIds; // list for iteration
 
-    // Events
+    // candidates (per category)
+    mapping(uint256 => uint256) private nextCandidateId; // categoryId => next candidate sub-id
+    mapping(uint256 => mapping(uint256 => Candidate)) private candidates; // categoryId => (candidateId => Candidate)
+    mapping(uint256 => uint256[]) private candidateIdsByCategory; // categoryId => list of candidate sub-ids
+
+    // ---------------- EVENTS ----------------
     event ElectionCreated(string title, uint256 startTime, uint256 endTime);
     event ElectionStarted(uint256 timestamp);
     event ElectionEnded(uint256 timestamp);
+
+    event CategoryCreated(uint256 indexed categoryId, string name);
+    event CategoryUpdated(uint256 indexed categoryId, string name, bool isActive);
+    event CategoryDeactivated(uint256 indexed categoryId);
+
+    event CandidateAdded(uint256 indexed categoryId, uint256 indexed candidateId, string name);
+    event CandidateDeactivated(uint256 indexed categoryId, uint256 indexed candidateId);
+
     event VoterRegistered(address indexed voterAddress, string studentId);
-    event CandidateAdded(uint256 indexed candidateId, string name, string position, string categoryId);
-    event CandidateDeactivated(uint256 indexed candidateId);
-    event VoteCast(address indexed voter, uint256 indexed candidateId, string position);
+    event VoteCast(address indexed voter, uint256 indexed categoryId, uint256 indexed candidateId);
 
-    event CategoryAdded(string id, string name);
-    event CategoryRemoved(string id);
+    event SystemReset(uint256 timestamp);
 
-    // Modifiers
+    // -------------- MODIFIERS --------------
     modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can call this function");
+        require(msg.sender == admin, "Only admin");
         _;
     }
 
     modifier electionExists() {
-        require(bytes(currentElection.title).length > 0, "No election has been created");
-        _;
-    }
-
-    modifier electionActive() {
-        require(currentElection.state == ElectionState.Active, "Election is not active");
-        require(block.timestamp >= currentElection.startTime, "Election has not started yet");
-        require(block.timestamp <= currentElection.endTime, "Election has already ended");
+        require(currentElection.state != ElectionState.None, "No election created");
         _;
     }
 
     modifier electionInSetup() {
-        require(currentElection.state == ElectionState.Created, "Election setup is locked");
+        require(currentElection.state == ElectionState.Created, "Setup locked");
         _;
     }
 
-    modifier voterNotRegistered() {
-        require(!voters[msg.sender].isRegistered, "Voter is already registered");
+    modifier electionActive() {
+        require(currentElection.state == ElectionState.Active, "Election not active");
+        require(block.timestamp >= currentElection.startTime, "Not started");
+        require(block.timestamp <= currentElection.endTime, "Ended");
         _;
     }
 
-    modifier voterRegistered() {
-        require(voters[msg.sender].isRegistered, "Voter is not registered");
+    modifier electionNotEnded() {
+        require(currentElection.state != ElectionState.Ended, "Election ended");
         _;
     }
 
-    modifier hasNotVotedForPosition(string memory position) {
-        require(!voters[msg.sender].votedForPosition[position], "Already voted for this position");
+    modifier categoryExists(uint256 categoryId) {
+        require(categories[categoryId].exists, "Category not found");
         _;
     }
 
-    modifier categoryExistsAndActive(string memory _id) {
-        VotingCategory storage cat = categories[_id];
-        require(bytes(cat.id).length > 0 && cat.isActive, "Category does not exist");
+    modifier categoryActive(uint256 categoryId) {
+        require(categories[categoryId].exists, "Category not found");
+        require(categories[categoryId].isActive, "Category inactive");
         _;
     }
 
-    // Constructor
     constructor() {
         admin = msg.sender;
+
+        // مبدئيًا مفيش Election
+        currentElection.state = ElectionState.None;
     }
 
-    /**
-     * @notice Create a new election
-     */
-    function createElection(
-        string memory _title,
-        uint256 _startTime,
-        uint256 _endTime
-    ) public onlyAdmin {
-        require(_startTime < _endTime, "End time must be after start time");
-        require(_startTime >= block.timestamp, "Start time cannot be in the past");
+    // ---------------- ELECTION ----------------
 
-        // Reset previous election candidate data if any
-        if (bytes(currentElection.title).length > 0) {
-            for (uint256 i = 0; i < positions.length; i++) {
-                delete candidatesByPosition[positions[i]];
-            }
-            delete positions;
-            candidateCount = 0;
-        }
+    // تعمل Election واحدة فقط، بعد ما تعمل Reset
+    function createElection(
+        string memory title,
+        uint256 startTime,
+        uint256 endTime
+    ) external onlyAdmin {
+        require(currentElection.state == ElectionState.None, "Reset first");
+        require(bytes(title).length > 0, "Title required");
+        require(startTime < endTime, "Invalid time range");
+        require(startTime >= block.timestamp, "Start in past");
 
         currentElection = Election({
-            title: _title,
-            startTime: _startTime,
-            endTime: _endTime,
+            title: title,
+            startTime: startTime,
+            endTime: endTime,
             state: ElectionState.Created,
             totalVoters: 0,
             totalVotes: 0
         });
 
-        emit ElectionCreated(_title, _startTime, _endTime);
+        emit ElectionCreated(title, startTime, endTime);
     }
 
-    /**
-     * @notice Start the election (locks config)
-     */
-    function startElection() public onlyAdmin electionExists {
-        require(currentElection.state == ElectionState.Created, "Election cannot be started");
+    function startElection() external onlyAdmin electionExists {
+        require(currentElection.state == ElectionState.Created, "Cannot start");
         currentElection.state = ElectionState.Active;
         emit ElectionStarted(block.timestamp);
     }
 
-    /**
-     * @notice End the election
-     */
-    function endElection() public onlyAdmin electionExists {
-        require(currentElection.state == ElectionState.Active, "Election is not active");
+    function endElection() external onlyAdmin electionExists {
+        require(currentElection.state == ElectionState.Active, "Not active");
         currentElection.state = ElectionState.Ended;
         emit ElectionEnded(block.timestamp);
     }
 
-    // -------------------------------------------------------------------------
-    // CATEGORY MANAGEMENT
-    // -------------------------------------------------------------------------
+    // بعد ما الانتخابات تنتهي، الأدمن يعمل Reset يمسح كل حاجة ويبدأ من جديد
+    function resetSystem() external onlyAdmin electionExists {
+        require(currentElection.state == ElectionState.Ended, "End election first");
 
-    /**
-     * @notice Add a new voting category (only during setup)
-     */
-    function addCategory(
-        string memory _id,
-        string memory _name,
-        string memory _description,
-        string[] memory _positions
-    ) public onlyAdmin electionExists electionInSetup {
-        
-        if (bytes(categories[_id].id).length > 0) {
-            require(!categories[_id].isActive, "Category already active");
-            categories[_id].isActive = true;
-            categories[_id].name = _name;
-            categories[_id].description = _description;
-            categories[_id].positions = _positions;
-            emit CategoryAdded(_id, _name);
-            return;
-        }
+        _resetAllCandidates();
+        _resetAllCategories();
+        _resetAllVoters();
 
-        categories[_id] = VotingCategory({
-            id: _id,
-            name: _name,
-            description: _description,
-            positions: _positions,
-            isActive: true
-        });
+        // امسح بيانات الElection نفسها
+        delete currentElection;
+        currentElection.state = ElectionState.None;
 
-        categoryIds.push(_id);
-        categoryCount++;
-
-        emit CategoryAdded(_id, _name);
+        emit SystemReset(block.timestamp);
     }
 
-    /**
-     * @notice Mark a voting category as inactive (soft delete, only during setup)
-     */
-    function removeCategory(string memory _id)
-        public
+    // ---------------- CATEGORIES (DYNAMIC) ----------------
+
+    function createCategory(
+        string memory name,
+        string memory description
+    )
+        external
         onlyAdmin
         electionExists
         electionInSetup
-        categoryExistsAndActive(_id)
+        returns (uint256 newCategoryId)
     {
-        categories[_id].isActive = false;
-        emit CategoryRemoved(_id);
+        require(bytes(name).length > 0, "Category name required");
+
+        categoryCount++;
+        newCategoryId = categoryCount;
+
+        categories[newCategoryId] = Category({
+            id: newCategoryId,
+            name: name,
+            description: description,
+            isActive: true,
+            exists: true
+        });
+
+        categoryIds.push(newCategoryId);
+
+        emit CategoryCreated(newCategoryId, name);
+        emit CategoryUpdated(newCategoryId, name, true);
     }
 
-    /**
-     * @notice Get all active category IDs
-     */
-    function getCategories() public view returns (string[] memory activeCategoryIds) {
-        uint256 activeCount = 0;
-
-        // Count active categories
-        for (uint256 i = 0; i < categoryIds.length; i++) {
-            if (categories[categoryIds[i]].isActive) {
-                activeCount++;
-            }
-        }
-
-        // Create array of active category IDs
-        activeCategoryIds = new string[](activeCount);
-        uint256 index = 0;
-
-        for (uint256 i = 0; i < categoryIds.length; i++) {
-            if (categories[categoryIds[i]].isActive) {
-                activeCategoryIds[index] = categoryIds[i];
-                index++;
-            }
-        }
-    }
-
-    /**
-     * @notice Get details about a voting category (only active ones)
-     */
-    function getCategoryDetails(
-        string memory _id
+    function updateCategory(
+        uint256 categoryId,
+        string memory name,
+        string memory description,
+        bool isActive
     )
-        public
+        external
+        onlyAdmin
+        electionExists
+        electionInSetup
+        categoryExists(categoryId)
+    {
+        Category storage c = categories[categoryId];
+        c.name = name;
+        c.description = description;
+        c.isActive = isActive;
+
+        emit CategoryUpdated(categoryId, name, isActive);
+    }
+
+    function deactivateCategory(uint256 categoryId)
+        external
+        onlyAdmin
+        electionExists
+        electionInSetup
+        categoryActive(categoryId)
+    {
+        categories[categoryId].isActive = false;
+        emit CategoryDeactivated(categoryId);
+    }
+
+    function getCategory(uint256 categoryId)
+        external
         view
-        categoryExistsAndActive(_id)
+        categoryExists(categoryId)
+        returns (uint256 id, string memory name, string memory description, bool isActive)
+    {
+        Category memory c = categories[categoryId];
+        return (c.id, c.name, c.description, c.isActive);
+    }
+
+    function getAllCategories()
+        external
+        view
+        returns (Category[] memory)
+    {
+        // يرجّع الكاتيجوريز النشطة فقط
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            if (categories[categoryIds[i]].isActive) activeCount++;
+        }
+
+        Category[] memory arr = new Category[](activeCount);
+        uint256 idx = 0;
+
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            uint256 id_ = categoryIds[i];
+            if (!categories[id_].isActive) continue;
+            arr[idx] = categories[id_];
+            idx++;
+        }
+
+        return arr;
+    }
+
+    // ---------------- CANDIDATES (SUB-IDs per category) ----------------
+
+    function addCandidate(
+        uint256 categoryId,
+        string memory name,
+        string memory party
+    )
+        external
+        onlyAdmin
+        electionExists
+        electionInSetup
+        categoryActive(categoryId)
+        returns (uint256 newCandidateId)
+    {
+        require(bytes(name).length > 0, "Name required");
+
+        newCandidateId = ++nextCandidateId[categoryId];
+
+        candidates[categoryId][newCandidateId] = Candidate({
+            id: newCandidateId,
+            name: name,
+            party: party,
+            voteCount: 0,
+            isActive: true,
+            exists: true
+        });
+
+        candidateIdsByCategory[categoryId].push(newCandidateId);
+
+        emit CandidateAdded(categoryId, newCandidateId, name);
+    }
+
+    function deactivateCandidate(uint256 categoryId, uint256 candidateId)
+        external
+        onlyAdmin
+        electionExists
+        electionInSetup
+        categoryExists(categoryId)
+    {
+        Candidate storage c = candidates[categoryId][candidateId];
+        require(c.exists, "Candidate not found");
+        require(c.isActive, "Already inactive");
+
+        c.isActive = false;
+        emit CandidateDeactivated(categoryId, candidateId);
+    }
+
+    function getCandidatesForCategory(uint256 categoryId)
+        external
+        view
+        categoryExists(categoryId)
         returns (
-            string memory id,
-            string memory name,
-            string memory description,
-            string[] memory categoryPositions,
-            bool isActive
+            uint256[] memory ids,
+            string[] memory names,
+            string[] memory parties,
+            uint256[] memory votes
         )
     {
-        VotingCategory storage category = categories[_id];
+        uint256[] memory raw = candidateIdsByCategory[categoryId];
 
-        return (
-            category.id,
-            category.name,
-            category.description,
-            category.positions,
-            category.isActive
-        );
+        // count active
+        uint256 activeCount = 0;
+        for (uint256 i = 0; i < raw.length; i++) {
+            if (candidates[categoryId][raw[i]].isActive) activeCount++;
+        }
+
+        ids = new uint256[](activeCount);
+        names = new string[](activeCount);
+        parties = new string[](activeCount);
+        votes = new uint256[](activeCount);
+
+        uint256 idx = 0;
+        for (uint256 i = 0; i < raw.length; i++) {
+            Candidate memory c = candidates[categoryId][raw[i]];
+            if (!c.isActive) continue;
+
+            ids[idx] = c.id;
+            names[idx] = c.name;
+            parties[idx] = c.party;
+            votes[idx] = c.voteCount;
+            idx++;
+        }
     }
 
-    // -------------------------------------------------------------------------
-    // CANDIDATE MANAGEMENT
-    // -------------------------------------------------------------------------
-
-    /**
-     * @notice Add a new candidate (only during setup)
-     */
-    function addCandidate(
-        string memory _name,
-        string memory _position,
-        string memory _party,
-        string memory _category
-    )
-        public
-        onlyAdmin
-        electionExists
-        electionInSetup
-        categoryExistsAndActive(_category)
-    {
-        // Check if position exists in category
-        bool positionExists = false;
-        VotingCategory storage cat = categories[_category];
-
-        for (uint256 i = 0; i < cat.positions.length; i++) {
-            if (keccak256(bytes(cat.positions[i])) == keccak256(bytes(_position))) {
-                positionExists = true;
-                break;
-            }
-        }
-
-        // If position doesn't exist for that category, add it
-        if (!positionExists) {
-            cat.positions.push(_position);
-        }
-
-        candidateCount++;
-        Candidate memory newCandidate = Candidate({
-            id: candidateCount,
-            name: _name,
-            position: _position,
-            party: _party,
-            voteCount: 0,
-            categoryId: _category,
-            isActive: true
-        });
-
-        candidatesById[candidateCount] = newCandidate;
-        candidatesByPosition[_position].push(newCandidate);
-
-        // Add position to global list if not exists
-        bool positionInListExists = false;
-        for (uint256 i = 0; i < positions.length; i++) {
-            if (keccak256(bytes(positions[i])) == keccak256(bytes(_position))) {
-                positionInListExists = true;
-                break;
-            }
-        }
-
-        if (!positionInListExists) {
-            positions.push(_position);
-        }
-
-        emit CandidateAdded(candidateCount, _name, _position, _category);
-    }
-
-    /**
-     * @notice Deactivate (soft delete) a candidate (only during setup)
-     */
-    function deactivateCandidate(uint256 _candidateId)
-        public
-        onlyAdmin
-        electionExists
-        electionInSetup
-    {
-        require(_candidateId > 0 && _candidateId <= candidateCount, "Invalid candidate ID");
-
-        Candidate storage candidate = candidatesById[_candidateId];
-        require(candidate.isActive, "Candidate already inactive");
-
-        candidate.isActive = false;
-
-        // Also mark in the position array
-        Candidate[] storage list = candidatesByPosition[candidate.position];
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i].id == _candidateId) {
-                list[i].isActive = false;
-                break;
-            }
-        }
-
-        emit CandidateDeactivated(_candidateId);
-    }
-
-    // -------------------------------------------------------------------------
-    // VOTER MANAGEMENT & VOTING
-    // -------------------------------------------------------------------------
+    // ---------------- VOTERS + VOTING ----------------
 
     function registerVoter(
-        string memory _studentId,
-        string memory _department,
-        uint256 _yearOfStudy
-    ) public voterNotRegistered {
-        Voter storage newVoter = voters[msg.sender];
-        newVoter.studentId = _studentId;
-        newVoter.department = _department;
-        newVoter.yearOfStudy = _yearOfStudy;
-        newVoter.isRegistered = true;
-        newVoter.hasVoted = false;
+        string memory studentId,
+        string memory department,
+        uint256 yearOfStudy
+    ) external electionExists electionNotEnded {
+        Voter storage v = voters[msg.sender];
+        require(!v.isRegistered, "Already registered");
+
+        v.studentId = studentId;
+        v.department = department;
+        v.yearOfStudy = yearOfStudy;
+        v.isRegistered = true;
 
         registeredVoters.push(msg.sender);
         currentElection.totalVoters++;
 
-        emit VoterRegistered(msg.sender, _studentId);
+        emit VoterRegistered(msg.sender, studentId);
     }
 
-    function vote(
-        uint256 _candidateId
-    ) public voterRegistered electionActive {
-        require(_candidateId > 0 && _candidateId <= candidateCount, "Invalid candidate ID");
-
-        Candidate storage candidate = candidatesById[_candidateId];
-        require(candidate.isActive, "Candidate is not active");
-
-        // Ensure category is still active (extra safety)
-        VotingCategory storage cat = categories[candidate.categoryId];
-        require(cat.isActive, "Candidate category is not active");
-
-        require(
-            !voters[msg.sender].votedForPosition[candidate.position],
-            "Already voted for this position"
-        );
-
-        // Record the vote for this position
-        voters[msg.sender].votedForPosition[candidate.position] = true;
-
-        // Increase candidate vote count (storage reference -> updates mapping)
-        candidate.voteCount++;
-
-        // Update candidate in the position array
-        Candidate[] storage list = candidatesByPosition[candidate.position];
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i].id == _candidateId) {
-                list[i].voteCount++;
-                break;
-            }
-        }
-
-        // First time this voter casts any vote → increase totalVotes
-        if (!voters[msg.sender].hasVoted) {
-            voters[msg.sender].hasVoted = true;
-            currentElection.totalVotes++;
-        }
-
-        emit VoteCast(msg.sender, _candidateId, candidate.position);
-    }
-
-    // -------------------------------------------------------------------------
-    // VIEW FUNCTIONS
-    // -------------------------------------------------------------------------
-
-    function getCandidateCountForPosition(
-        string memory _position
-    ) public view returns (uint256 count) {
-        Candidate[] memory list = candidatesByPosition[_position];
-        uint256 activeCount = 0;
-
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i].isActive) {
-                activeCount++;
-            }
-        }
-        return activeCount;
-    }
-
-    function getCandidate(
-        uint256 _candidateId
-    )
-        public
-        view
-        returns (
-            uint256 id,
-            string memory name,
-            string memory position,
-            string memory party,
-            uint256 voteCount,
-            string memory categoryId,
-            bool isActive
-        )
+    // vote: 1 per category
+    function vote(uint256 categoryId, uint256 candidateId)
+        external
+        electionExists
+        electionActive
+        categoryActive(categoryId)
     {
-        require(_candidateId > 0 && _candidateId <= candidateCount, "Invalid candidate ID");
-        Candidate memory candidate = candidatesById[_candidateId];
-        return (
-            candidate.id,
-            candidate.name,
-            candidate.position,
-            candidate.party,
-            candidate.voteCount,
-            candidate.categoryId,
-            candidate.isActive
-        );
+        Voter storage v = voters[msg.sender];
+        require(v.isRegistered, "Not registered");
+        require(!v.votedInCategory[categoryId], "Already voted in category");
+
+        Candidate storage c = candidates[categoryId][candidateId];
+        require(c.exists, "Candidate not found");
+        require(c.isActive, "Candidate inactive");
+
+        v.votedInCategory[categoryId] = true;
+        c.voteCount++;
+        currentElection.totalVotes++;
+
+        emit VoteCast(msg.sender, categoryId, candidateId);
     }
 
-    function getPositions() public view returns (string[] memory allPositions) {
-        return positions;
-    }
-
-    function getCandidatesForPosition(
-        string memory _position
-    ) public view returns (uint256[] memory candidateIds) {
-        Candidate[] memory list = candidatesByPosition[_position];
-
-        // count active candidates
-        uint256 activeCount = 0;
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i].isActive) {
-                activeCount++;
-            }
-        }
-
-        candidateIds = new uint256[](activeCount);
-        uint256 idx = 0;
-
-        for (uint256 i = 0; i < list.length; i++) {
-            if (list[i].isActive) {
-                candidateIds[idx] = list[i].id;
-                idx++;
-            }
-        }
-    }
-
-    function hasVotedForPosition(
-        address _voter,
-        string memory _position
-    ) public view returns (bool voted) {
-        return voters[_voter].votedForPosition[_position];
-    }
-
-    function getElectionResults(
-        string memory _position
-    )
-        public
+    function hasVotedInCategory(address voter, uint256 categoryId)
+        external
         view
-        returns (
-            uint256[] memory candidateIds,
-            string[] memory names,
-            string[] memory parties,
-            uint256[] memory voteCounts
-        )
+        returns (bool)
     {
-        // Removed validation to allow fetching results anytime
+        return voters[voter].votedInCategory[categoryId];
+    }
 
-        Candidate[] memory list = candidatesByPosition[_position];
+    // -------------- INTERNAL RESET --------------
 
-        // include even inactive candidates here for full history
-        uint256 count = list.length;
+    function _resetAllCandidates() internal {
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            uint256 catId = categoryIds[i];
 
-        candidateIds = new uint256[](count);
-        names       = new string[](count);
-        parties     = new string[](count);
-        voteCounts  = new uint256[](count);
+            uint256[] storage ids = candidateIdsByCategory[catId];
+            for (uint256 j = 0; j < ids.length; j++) {
+                delete candidates[catId][ids[j]];
+            }
 
-        for (uint256 i = 0; i < count; i++) {
-            candidateIds[i] = list[i].id;
-            names[i]        = list[i].name;
-            parties[i]      = list[i].party;
-            voteCounts[i]   = list[i].voteCount;
+            delete candidateIdsByCategory[catId];
+            nextCandidateId[catId] = 0;
         }
     }
 
-    function getElectionStats()
-        public
-        view
-        returns (
-            uint256 totalRegisteredVoters,
-            uint256 totalVotesCast,
-            ElectionState electionState
-        )
-    {
-        return (
-            currentElection.totalVoters,
-            currentElection.totalVotes,
-            currentElection.state
-        );
+    function _resetAllCategories() internal {
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            uint256 catId = categoryIds[i];
+            delete categories[catId];
+        }
+
+        delete categoryIds;
+        categoryCount = 0;
+    }
+
+    function _resetAllVoters() internal {
+        for (uint256 i = 0; i < registeredVoters.length; i++) {
+            address voterAddr = registeredVoters[i];
+            delete voters[voterAddr]; // ده بيمسح كمان votedInCategory mapping
+        }
+
+        delete registeredVoters;
     }
 }

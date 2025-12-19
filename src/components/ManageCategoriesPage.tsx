@@ -1,45 +1,78 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "./ui/dialog";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "./ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 import { Badge } from "./ui/badge";
 import { Switch } from "./ui/switch";
-import { ArrowLeft, Plus, Pencil, Trash2, Save, X, RotateCcw } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { UserNav } from "./UserNav";
 import { AuthGuard } from "./AuthGuard";
 import { toast } from "sonner";
 import * as api from "../lib/api";
-import { addCategoryOnChain } from "../lib/blockchain";
-import { generateCategoryId } from "../lib/utils";
+
+// لو إنت متأكد إن السمارٹ كونتراكت بتاعك بقى Dynamic IDs (مش cat1/cat2/cat3)
+// يبقى بلاش نلمس blockchain categories من هنا دلوقتي.
+// لو عايز تفعلها تاني بعدين، ابعتلي blockchain.ts وأنا أظبطه.
+// import { addCategoryOnChain, removeCategoryOnChain } from "../lib/blockchain";
 
 const apuLogo = "/apu-logo.png";
 
 interface Category {
-  id: string;
-  name: string;
-  description: string;
-  maxVotes: number;
-  isActive: boolean;
+  id: string; // UUID من DB
+  election_id?: string; // UUID (لو بيرجع)
+  slug: string; // president / vice-president / secretary
+  category_name: string; // display name
+  description?: string;
+  max_votes: number;
+  is_active: boolean;
+  created_at?: string;
 }
 
 interface ManageCategoriesPageProps {
   onNavigate: (page: string) => void;
 }
 
-export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) {
+export function ManageCategoriesPage({
+  onNavigate,
+}: ManageCategoriesPageProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [formData, setFormData] = useState<Omit<Category, "id">>({
-    name: "",
+
+  const [formData, setFormData] = useState<{
+    category_name: string;
+    description: string;
+    max_votes: number;
+  }>({
+    category_name: "",
     description: "",
-    maxVotes: 1,
-    isActive: true
+    max_votes: 1,
   });
 
   useEffect(() => {
@@ -50,149 +83,111 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
     try {
       setLoading(true);
       const data = await api.getCategories();
-      setCategories(data.categories || []);
-    } catch (error) {
-      console.error("Error fetching categories:", error);
-      toast.error("Failed to load categories");
+
+      const dbCats: Category[] = data.categories || [];
+
+      // ترتيب بسيط (حسب created_at إن وجد، وإلا حسب الاسم)
+      const sorted = [...dbCats].sort((a, b) => {
+        const da = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const db = b.created_at ? new Date(b.created_at).getTime() : 0;
+        if (da !== db) return da - db;
+        return (a.category_name || "").localeCompare(b.category_name || "");
+      });
+
+      setCategories(sorted);
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Failed to load categories");
+      setCategories([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOpenDialog = (category?: Category) => {
-    if (category) {
-      setEditingCategory(category);
-      setFormData({
-        name: category.name,
-        description: category.description,
-        maxVotes: category.maxVotes,
-        isActive: category.isActive
-      });
-    } else {
-      setEditingCategory(null);
-      setFormData({
-        name: "",
-        description: "",
-        maxVotes: 1,
-        isActive: true
-      });
-    }
+  const handleOpenEdit = (category: Category) => {
+    setEditingCategory(category);
+    setFormData({
+      category_name: category.category_name || "",
+      description: category.description || "",
+      max_votes: category.max_votes ?? 1,
+    });
     setDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingCategory) return;
 
-    if (!formData.name.trim()) {
-      toast.error("Category name is required");
+    const name = formData.category_name.trim();
+    if (!name) {
+      toast.error("Category name is required.");
       return;
     }
 
     try {
-      if (editingCategory) {
-        // Update existing category
-        await api.updateCategory(editingCategory.id, formData);
-        toast.success("Category updated successfully");
-      } else {
-        // Create new category
-        // CRITICAL: Add to Blockchain FIRST
-        try {
-          // Generate ID: "Student President" -> "student-president"
-          const categoryId = generateCategoryId(formData.name);
+      // ✅ DB update باستخدام UUID الحقيقي
+      await api.updateCategory(editingCategory.id, {
+        name,
+        description: formData.description || "",
+        maxVotes: formData.max_votes,
+        isActive: editingCategory.is_active,
+      });
 
-          await addCategoryOnChain(
-            categoryId,
-            formData.name,
-            formData.description,
-            [] // Positions will be added dynamically when candidates are added
-          );
-        } catch (chainError: any) {
-          console.error("Blockchain error:", chainError);
-          
-          // Check if it's a "Category ID already exists" error
-          if (chainError?.message?.includes("Category ID already exists") || 
-              chainError?.reason?.includes("Category ID already exists")) {
-            toast.error("A category with this name already exists on the blockchain. Please choose a different name.");
-            return; // Stop execution - don't save to DB
-          }
-          
-          // For other blockchain errors, show generic message
-          toast.error("Failed to add category to blockchain. Please try again.");
-          return; // Stop execution - don't save to DB if blockchain fails
-        }
+      // ⚠️ Blockchain calls مؤقتًا OFF عشان dynamic contract
+      // لو انت لسه على نظام cat1/cat2/cat3 قولّي وأنا أرجعهم صح.
+      // await addCategoryOnChain(editingCategory.slug, name, formData.description || "", [name]);
 
-        await api.addCategory(formData);
-        toast.success("Category created successfully (Chain & DB)");
-      }
-
+      toast.success("Category updated (DB)");
       setDialogOpen(false);
-      fetchCategories();
-    } catch (error) {
-      console.error("Error saving category:", error);
-      toast.error("Failed to save category");
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this category? This action cannot be undone.")) {
-      return;
-    }
-
-    try {
-      await api.deleteCategory(id);
-      toast.success("Category deleted successfully");
-      fetchCategories();
-    } catch (error) {
-      console.error("Error deleting category:", error);
-      toast.error("Failed to delete category");
+      setEditingCategory(null);
+      await fetchCategories();
+    } catch (err: any) {
+      console.error("Save error:", err);
+      toast.error(err?.reason || err?.message || "Failed to update category");
     }
   };
 
   const handleToggleStatus = async (category: Category) => {
+    const nextActive = !category.is_active;
+
     try {
-      const updatedCategory = { ...category, isActive: !category.isActive };
-      await api.updateCategory(category.id, updatedCategory);
+      await api.updateCategory(category.id, {
+        name: category.category_name,
+        description: category.description || "",
+        maxVotes: category.max_votes,
+        isActive: nextActive,
+      });
 
-      // Update local state locally for immediate feedback
-      setCategories(categories.map(c =>
-        c.id === category.id ? updatedCategory : c
-      ));
+      // ⚠️ Blockchain calls مؤقتًا OFF
+      // if (!nextActive) await removeCategoryOnChain(category.slug);
+      // else await addCategoryOnChain(category.slug, category.category_name, category.description || "", [category.category_name]);
 
-      toast.success(`Category ${updatedCategory.isActive ? 'activated' : 'deactivated'}`);
-    } catch (error) {
-      console.error("Error updating category status:", error);
-      toast.error("Failed to update status");
-      // Revert on error
+      setCategories((prev) =>
+        prev.map((c) =>
+          c.id === category.id ? { ...c, is_active: nextActive } : c
+        )
+      );
+
+      toast.success(
+        `Category ${nextActive ? "activated" : "deactivated"} (DB)`
+      );
+    } catch (err: any) {
+      console.error("Toggle error:", err);
+      toast.error(err?.reason || err?.message || "Failed to update status");
       fetchCategories();
     }
   };
-
-  /*
-  const handleResetDefaults = async () => {
-    if (!confirm("This will reset categories to the default set (Student Council, Faculty Rep, Club President). Continue?")) {
-      return;
-    }
-
-    try {
-      // await api.resetCategories();
-      toast.success("Categories reset to defaults");
-      fetchCategories();
-    } catch (error) {
-      console.error("Error resetting categories:", error);
-      toast.error("Failed to reset categories");
-    }
-  };
-  */
 
   return (
     <AuthGuard requireAdmin={true} onNavigate={onNavigate}>
       <div className="min-h-screen bg-slate-50 flex flex-col">
-        {/* Header */}
         <header className="bg-white border-b sticky top-0 z-50">
           <div className="container mx-auto px-6 h-16 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-              <span className="text-slate-900 font-bold text-xl">Admin Dashboard</span>
+              <span className="text-slate-900 font-bold text-xl">
+                Admin Dashboard
+              </span>
             </div>
             <UserNav onNavigate={onNavigate} />
           </div>
@@ -200,7 +195,11 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
 
         <main className="flex-1 container mx-auto px-6 py-8">
           <div className="flex items-center gap-2 mb-6">
-            <Button variant="ghost" size="sm" onClick={() => onNavigate('admin')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate("admin")}
+            >
               <ArrowLeft className="h-4 w-4 mr-1" />
               Back to Dashboard
             </Button>
@@ -208,24 +207,24 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
 
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-slate-900">Manage Voting Categories</h1>
-              <p className="text-slate-600 mt-1">Configure the positions available for election</p>
-            </div>
-            <div className="flex gap-3">
-              <Button onClick={() => handleOpenDialog()} className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Category
-              </Button>
+              <h1 className="text-3xl font-bold text-slate-900">
+                Manage Voting Categories
+              </h1>
+              <p className="text-slate-600 mt-1">
+                Dynamic categories from DB (UUID id + slug). Toggle active
+                status and edit details.
+              </p>
             </div>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle>Categories List</CardTitle>
+              <CardTitle>Categories</CardTitle>
               <CardDescription>
-                Define the positions that candidates can run for.
+                These categories are tied to the active election in DB.
               </CardDescription>
             </CardHeader>
+
             <CardContent>
               {loading ? (
                 <div className="text-center py-12">
@@ -233,9 +232,8 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
                   <p className="text-slate-500">Loading categories...</p>
                 </div>
               ) : categories.length === 0 ? (
-                <div className="text-center py-12 border-2 border-dashed rounded-lg">
-                  <p className="text-slate-500 mb-4">No categories found.</p>
-                  <Button onClick={() => handleOpenDialog()}>Create First Category</Button>
+                <div className="text-center py-12 text-slate-500">
+                  No categories found for the active election.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
@@ -243,39 +241,54 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
                     <TableHeader>
                       <TableRow>
                         <TableHead>Status</TableHead>
+                        <TableHead>Slug</TableHead>
                         <TableHead>Name</TableHead>
                         <TableHead>Description</TableHead>
                         <TableHead>Max Votes</TableHead>
                         <TableHead className="text-right">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
+
                     <TableBody>
                       {categories.map((category) => (
                         <TableRow key={category.id}>
                           <TableCell>
                             <Switch
-                              checked={category.isActive}
-                              onCheckedChange={() => handleToggleStatus(category)}
+                              checked={category.is_active}
+                              onCheckedChange={() =>
+                                handleToggleStatus(category)
+                              }
                             />
                           </TableCell>
+
+                          <TableCell className="font-mono text-slate-700">
+                            {category.slug}
+                          </TableCell>
+
                           <TableCell className="font-medium text-slate-900">
-                            {category.name}
+                            {category.category_name}
                           </TableCell>
+
                           <TableCell className="text-slate-600 max-w-xs truncate">
-                            {category.description}
+                            {category.description || (
+                              <span className="text-slate-400">—</span>
+                            )}
                           </TableCell>
+
                           <TableCell>
-                            <Badge variant="secondary">{category.maxVotes}</Badge>
+                            <Badge variant="secondary">
+                              {category.max_votes}
+                            </Badge>
                           </TableCell>
+
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(category)}>
-                                <Pencil className="h-4 w-4 text-slate-500" />
-                              </Button>
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(category.id)}>
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => handleOpenEdit(category)}
+                            >
+                              <Pencil className="h-4 w-4 text-slate-500" />
+                            </Button>
                           </TableCell>
                         </TableRow>
                       ))}
@@ -290,59 +303,70 @@ export function ManageCategoriesPage({ onNavigate }: ManageCategoriesPageProps) 
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogContent className="sm:max-w-[500px]">
             <DialogHeader>
-              <DialogTitle>{editingCategory ? "Edit Category" : "Add New Category"}</DialogTitle>
+              <DialogTitle>Edit Category</DialogTitle>
               <DialogDescription>
-                Configure the details for this voting category.
+                Editing category details in DB (UUID-based).
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleSubmit} className="space-y-4 py-4">
+
+            <form onSubmit={handleSave} className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Slug</Label>
+                <Input value={editingCategory?.slug || ""} disabled />
+              </div>
+
               <div className="space-y-2">
                 <Label htmlFor="name">Category Name</Label>
                 <Input
                   id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  placeholder="e.g. Student Council President"
+                  value={formData.category_name}
+                  onChange={(e) =>
+                    setFormData({ ...formData, category_name: e.target.value })
+                  }
                   required
                 />
               </div>
+
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Brief description of this role..."
+                  onChange={(e) =>
+                    setFormData({ ...formData, description: e.target.value })
+                  }
                   rows={3}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="maxVotes">Max Votes per Voter</Label>
-                  <Input
-                    id="maxVotes"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={formData.maxVotes}
-                    onChange={(e) => setFormData({ ...formData, maxVotes: parseInt(e.target.value) || 1 })}
-                    required
-                  />
-                  <p className="text-xs text-slate-500">How many candidates can a voter select?</p>
-                </div>
-                <div className="flex items-center justify-between pt-8">
-                  <Label htmlFor="isActive" className="cursor-pointer">Active Status</Label>
-                  <Switch
-                    id="isActive"
-                    checked={formData.isActive}
-                    onCheckedChange={(checked) => setFormData({ ...formData, isActive: checked })}
-                  />
-                </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="maxVotes">Max Votes per Voter</Label>
+                <Input
+                  id="maxVotes"
+                  type="number"
+                  min={1}
+                  max={10}
+                  value={formData.max_votes}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      max_votes: parseInt(e.target.value) || 1,
+                    })
+                  }
+                  required
+                />
               </div>
+
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
                 <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                  {editingCategory ? "Save Changes" : "Create Category"}
+                  Save Changes
                 </Button>
               </DialogFooter>
             </form>

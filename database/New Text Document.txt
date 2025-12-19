@@ -1,0 +1,17 @@
+SELECT * FROM public.categories
+ORDER BY id ASC 
+
+-- See all candidates with their categories
+SELECT 
+  c.candidate_name,
+  c.party,
+  c.vote_count,
+  cat.name as category_name,
+  c.created_at
+FROM candidates c
+LEFT JOIN categories cat ON c.category_id = cat.id
+ORDER BY c.created_at DESC;
+
+
+SELECT * FROM public.candidates 
+ORDER BY id ASC 

@@ -1,11 +1,18 @@
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Shield, Lock, Check, ChevronRight } from "lucide-react";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
 import { useState, useEffect } from "react";
 import { getElectionSettings, getDashboardStatistics } from "../lib/api";
+import { getElectionState } from "../lib/blockchain";
 
 const apuLogo = "/apu-logo.png";
 
@@ -31,49 +38,63 @@ export function HomePage({ onNavigate }: HomePageProps) {
   useEffect(() => {
     const fetchElectionData = async () => {
       try {
-        const [settings, stats] = await Promise.all([
-          getElectionSettings(),
-          getDashboardStatistics()
-        ]);
+        // Fetch directly from blockchain (skip Supabase API to avoid 404 errors)
+        // Check if MetaMask is available
+        if (typeof window === "undefined" || !(window as any).ethereum) {
+          throw new Error("MetaMask not available");
+        }
 
-        // Parse dates
-        const startDate = settings.startDate ? new Date(settings.startDate) : null;
-        const endDate = settings.endDate ? new Date(settings.endDate) : null;
-        const now = new Date();
+        const blockchainElection = await getElectionState();
+        const startDate = blockchainElection.startTime
+          ? new Date(blockchainElection.startTime * 1000)
+          : null;
+        const endDate = blockchainElection.endTime
+          ? new Date(blockchainElection.endTime * 1000)
+          : null;
 
-        // Determine if election is active
-        let status = stats.electionStatus || 'Not Started';
+        // Map blockchain states: None=0, Created=1, Active=2, Ended=3
+        let status = "Not Available";
         let isActive = false;
 
-        if (startDate && endDate) {
-          if (now < startDate) {
-            status = 'Not Started';
-          } else if (now > endDate) {
-            status = 'Ended';
-          } else {
-            status = 'Active';
-            isActive = true;
-          }
+        if (blockchainElection.state === 0) {
+          status = "No Election";
+        } else if (blockchainElection.state === 1) {
+          status = "Setup Phase";
+        } else if (blockchainElection.state === 2) {
+          status = "Active";
+          isActive = true;
+        } else if (blockchainElection.state === 3) {
+          status = "Ended";
         }
 
         setElectionData({
-          title: settings.title || 'No Active Election',
+          title: blockchainElection.title || "No Active Election",
           status,
-          startDate: startDate ? startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD',
-          endDate: endDate ? endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'TBD',
-          votesCount: stats.votesCount || 0,
-          isActive
+          startDate: startDate
+            ? startDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })
+            : "TBD",
+          endDate: endDate
+            ? endDate.toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
+              })
+            : "TBD",
+          votesCount: blockchainElection.totalVotes || 0,
+          isActive,
         });
       } catch (error) {
-        console.error('Failed to fetch election data:', error);
-        // Set default values if fetch fails
+        console.error("Failed to fetch election data from blockchain:", error);
+        // Final fallback: static defaults
         setElectionData({
-          title: 'No Active Election',
-          status: 'Not Available',
-          startDate: 'TBD',
-          endDate: 'TBD',
+          title: "No Active Election",
+          status: "Not Available",
+          startDate: "TBD",
+          endDate: "TBD",
           votesCount: 0,
-          isActive: false
+          isActive: false,
         });
       } finally {
         setLoading(false);
@@ -86,16 +107,16 @@ export function HomePage({ onNavigate }: HomePageProps) {
   const handleElectionsClick = () => {
     if (!currentUser) {
       // Not logged in, save intended destination and redirect to login
-      localStorage.setItem('intendedDestination', 'vote');
-      onNavigate('login');
+      localStorage.setItem("intendedDestination", "vote");
+      onNavigate("login");
     } else {
       // Logged in, go to elections (which will check registration status)
-      onNavigate('vote');
+      onNavigate("vote");
     }
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-teal-50/30 to-white">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
@@ -105,32 +126,32 @@ export function HomePage({ onNavigate }: HomePageProps) {
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
-              onClick={() => onNavigate('home')}
-              className="text-sm text-primary"
+              onClick={() => onNavigate("home")}
+              className="text-sm font-normal text-primary"
             >
               Home
             </button>
             <button
               onClick={handleElectionsClick}
-              className="text-sm transition-colors hover:text-primary"
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Elections
             </button>
             <button
-              onClick={() => onNavigate('results')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Results
             </button>
             <button
-              onClick={() => onNavigate('about')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("about")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               About
             </button>
             <button
-              onClick={() => onNavigate('contact')}
-              className="text-sm transition-colors hover:text-primary"
+              onClick={() => onNavigate("contact")}
+              className="text-sm font-normal transition-colors hover:text-primary"
             >
               Contact
             </button>
@@ -142,13 +163,13 @@ export function HomePage({ onNavigate }: HomePageProps) {
               <>
                 <Button
                   variant="ghost"
-                  onClick={() => onNavigate('register')}
+                  onClick={() => onNavigate("register")}
                   className="text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
-                  onClick={() => onNavigate('login')}
+                  onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
                   Sign In
@@ -171,14 +192,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
                     APU VOTE: Secure University Elections on Blockchain
                   </h1>
                   <p className="text-slate-600 max-w-[600px]">
-                    Transparent, tamper-proof voting system ensuring fair elections with real-time results and complete auditability.
+                    Transparent, tamper-proof voting system ensuring fair
+                    elections with real-time results and complete auditability.
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 min-[400px]:flex-row">
                   <Button
                     size="lg"
                     className="bg-slate-900 hover:bg-slate-800 text-white px-8"
-                    onClick={() => onNavigate('register')}
+                    onClick={() => onNavigate("register")}
                   >
                     Register to Vote
                   </Button>
@@ -186,7 +208,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
                     size="lg"
                     variant="outline"
                     className="border-slate-300 text-slate-900 hover:bg-slate-50 px-8"
-                    onClick={() => onNavigate('about')}
+                    onClick={() => onNavigate("about")}
                   >
                     Learn More
                   </Button>
@@ -198,8 +220,12 @@ export function HomePage({ onNavigate }: HomePageProps) {
                 {loading ? (
                   <Card className="w-full max-w-sm border-2 border-emerald-400 shadow-lg">
                     <CardHeader className="text-center space-y-1 pb-4">
-                      <CardTitle className="text-slate-900">Loading...</CardTitle>
-                      <CardDescription className="text-slate-600">Fetching election data</CardDescription>
+                      <CardTitle className="text-slate-900">
+                        Loading...
+                      </CardTitle>
+                      <CardDescription className="text-slate-600">
+                        Fetching election data
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="h-32 flex items-center justify-center">
@@ -208,21 +234,36 @@ export function HomePage({ onNavigate }: HomePageProps) {
                     </CardContent>
                   </Card>
                 ) : electionData ? (
-                  <Card className={`w-full max-w-sm border-2 ${electionData.isActive ? 'border-emerald-400' : 'border-slate-300'} shadow-lg`}>
+                  <Card
+                    className={`w-full max-w-sm border-2 ${
+                      electionData.isActive
+                        ? "border-emerald-400"
+                        : "border-slate-300"
+                    } shadow-lg`}
+                  >
                     <CardHeader className="text-center space-y-1 pb-4">
-                      <CardTitle className="text-slate-900">Current Election</CardTitle>
-                      <CardDescription className="text-slate-600">{electionData.title}</CardDescription>
+                      <CardTitle className="text-slate-900">
+                        Current Election
+                      </CardTitle>
+                      <CardDescription className="text-slate-600">
+                        {electionData.title}
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-slate-900">Status:</span>
-                          <Badge className={`${electionData.status === 'Active'
-                              ? 'bg-emerald-500 hover:bg-emerald-600'
-                              : electionData.status === 'Ended'
-                                ? 'bg-red-500 hover:bg-red-600'
-                                : 'bg-slate-500 hover:bg-slate-600'
-                            } text-white`}>
+                          <span className="text-sm text-slate-900">
+                            Status:
+                          </span>
+                          <Badge
+                            className={`${
+                              electionData.status === "Active"
+                                ? "bg-emerald-500 hover:bg-emerald-600"
+                                : electionData.status === "Ended"
+                                ? "bg-red-500 hover:bg-red-600"
+                                : "bg-slate-500 hover:bg-slate-600"
+                            } text-white`}
+                          >
                             {electionData.status}
                           </Badge>
                         </div>
@@ -232,10 +273,15 @@ export function HomePage({ onNavigate }: HomePageProps) {
                               <div
                                 className="h-full rounded-full bg-emerald-500 transition-all duration-300"
                                 style={{
-                                  width: `${electionData.startDate !== 'TBD' && electionData.endDate !== 'TBD'
-                                      ? Math.min(75, Math.max(10, Math.random() * 100))
+                                  width: `${
+                                    electionData.startDate !== "TBD" &&
+                                    electionData.endDate !== "TBD"
+                                      ? Math.min(
+                                          75,
+                                          Math.max(10, Math.random() * 100)
+                                        )
                                       : 0
-                                    }%`
+                                  }%`,
                                 }}
                               ></div>
                             </div>
@@ -245,27 +291,43 @@ export function HomePage({ onNavigate }: HomePageProps) {
                             </div>
                           </>
                         )}
-                        {!electionData.isActive && electionData.startDate !== 'TBD' && (
-                          <div className="flex justify-between text-xs text-slate-600">
-                            <span>Started: {electionData.startDate}</span>
-                            <span>Ends: {electionData.endDate}</span>
-                          </div>
-                        )}
+                        {!electionData.isActive &&
+                          electionData.startDate !== "TBD" && (
+                            <div className="flex justify-between text-xs text-slate-600">
+                              <span>Started: {electionData.startDate}</span>
+                              <span>Ends: {electionData.endDate}</span>
+                            </div>
+                          )}
                       </div>
                       <div className="text-center py-2">
-                        <p className="text-sm text-slate-600 mb-1">Total Votes Cast</p>
-                        <p className="text-slate-900">{electionData.votesCount.toLocaleString()}</p>
+                        <p className="text-sm text-slate-600 mb-1">
+                          Total Votes Cast
+                        </p>
+                        <p className="text-slate-900">
+                          {electionData.votesCount.toLocaleString()}
+                        </p>
                       </div>
                       <Button
-                        className={`w-full ${electionData.isActive
-                            ? 'bg-slate-900 hover:bg-slate-800'
-                            : 'bg-slate-400 hover:bg-slate-500 cursor-not-allowed'
-                          } text-white`}
-                        onClick={electionData.isActive ? handleElectionsClick : undefined}
+                        className={`w-full ${
+                          electionData.isActive
+                            ? "bg-slate-900 hover:bg-slate-800"
+                            : "bg-slate-400 hover:bg-slate-500 cursor-not-allowed"
+                        } text-white`}
+                        onClick={
+                          electionData.isActive
+                            ? handleElectionsClick
+                            : undefined
+                        }
                         disabled={!electionData.isActive}
                       >
-                        {electionData.isActive ? 'Vote Now' : electionData.status === 'Ended' ? 'Election Ended' : 'Not Started'}
-                        {electionData.isActive && <ChevronRight className="ml-2 h-4 w-4" />}
+                        {electionData.isActive
+                          ? "Vote Now"
+                          : electionData.status === "Ended"
+                          ? "Election Ended"
+                          : "Not Started"}
+                        {electionData.isActive && (
+                          <ChevronRight className="ml-2 h-4 w-4" />
+                        )}
                       </Button>
                     </CardContent>
                   </Card>
@@ -281,7 +343,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
             <div className="flex flex-col items-center justify-center space-y-3 text-center mb-12">
               <h2 className="text-slate-900">Why Blockchain Voting?</h2>
               <p className="max-w-[800px] text-slate-600">
-                Our platform leverages Ethereum blockchain technology to provide a secure, transparent, and tamper-proof voting system.
+                Our platform leverages Ethereum blockchain technology to provide
+                a secure, transparent, and tamper-proof voting system.
               </p>
             </div>
             <div className="mx-auto grid max-w-5xl grid-cols-1 gap-8 md:grid-cols-3">
@@ -292,7 +355,8 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   <h3 className="text-slate-900">Security</h3>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  Cryptographic security ensures votes cannot be tampered with once cast. Each vote is securely recorded on the blockchain.
+                  Cryptographic security ensures votes cannot be tampered with
+                  once cast. Each vote is securely recorded on the blockchain.
                 </p>
               </div>
 
@@ -303,7 +367,9 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   <h3 className="text-slate-900">Transparency</h3>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  All votes are publicly verifiable while maintaining voter privacy. The entire election process is transparent and auditable.
+                  All votes are publicly verifiable while maintaining voter
+                  privacy. The entire election process is transparent and
+                  auditable.
                 </p>
               </div>
 
@@ -314,7 +380,9 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   <h3 className="text-slate-900">Fairness</h3>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed">
-                  Decentralized system prevents any single entity from controlling the election. Real-time results are available to all participants.
+                  Decentralized system prevents any single entity from
+                  controlling the election. Real-time results are available to
+                  all participants.
                 </p>
               </div>
             </div>
@@ -330,19 +398,19 @@ export function HomePage({ onNavigate }: HomePageProps) {
           </div>
           <div className="flex gap-6">
             <button
-              onClick={() => onNavigate('terms')}
+              onClick={() => onNavigate("terms")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Terms
             </button>
             <button
-              onClick={() => onNavigate('privacy')}
+              onClick={() => onNavigate("privacy")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Privacy
             </button>
             <button
-              onClick={() => onNavigate('contact')}
+              onClick={() => onNavigate("contact")}
               className="text-sm text-slate-600 hover:text-slate-900"
             >
               Contact

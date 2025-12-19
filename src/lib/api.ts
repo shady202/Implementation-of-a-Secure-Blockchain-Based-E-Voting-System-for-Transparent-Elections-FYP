@@ -1,40 +1,64 @@
-import { projectId, publicAnonKey } from '../utils/supabase/info';
+// API Base URL - now pointing to local Express backend
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api";
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-14835f38`;
+// Temporary: Simple user ID storage (will be replaced with session auth)
+let currentUserId: string | null = null;
 
-// Helper function to make API requests
-async function apiRequest(endpoint: string, options: RequestInit = {}) {
-  const url = `${API_BASE_URL}${endpoint}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${publicAnonKey}`,
-    ...options.headers,
-  };
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers,
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error(`API request failed: ${endpoint}`, error);
-    throw error;
+export function setCurrentUser(userId: string) {
+  currentUserId = userId;
+  if (userId) {
+    localStorage.setItem("user_id", userId);
+  } else {
+    localStorage.removeItem("user_id");
   }
 }
 
-// ============================================
-// ELECTION SETTINGS API
-// ============================================
+export function getCurrentUserId(): string | null {
+  return currentUserId || localStorage.getItem("user_id");
+}
 
+// ===============================
+// API request helper
+// ===============================
+async function apiRequest(endpoint: string, options: RequestInit = {}) {
+  const url = `${API_BASE_URL}${endpoint}`;
+  const userId = getCurrentUserId();
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string>),
+  };
+
+  // Add user ID header if available (temporary auth)
+  if (userId) {
+    headers["x-user-id"] = userId;
+  }
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    console.error("🔴 API Error Response:", errorData);
+    console.error("🔴 Error details:", errorData.details);
+    console.error("🔴 Error column:", errorData.column);
+    console.error("🔴 Error constraint:", errorData.constraint);
+    throw new Error(
+      errorData.error || `HTTP error! status: ${response.status}`
+    );
+  }
+
+  return await response.json();
+}
+
+// ============================================
+// ELECTION SETTINGS API (Edge)
+// ============================================
 export async function getElectionSettings() {
-  return apiRequest('/election-settings');
+  return apiRequest("/election-settings");
 }
 
 export async function updateElectionSettings(settings: {
@@ -44,37 +68,53 @@ export async function updateElectionSettings(settings: {
   requireIdVerification?: boolean;
   showResultsDuringVoting?: boolean;
 }) {
-  return apiRequest('/election-settings', {
-    method: 'POST',
+  return apiRequest("/election-settings", {
+    method: "POST",
     body: JSON.stringify(settings),
   });
 }
 
 export async function updateElectionStatus(status: string) {
-  return apiRequest('/election-status', {
-    method: 'POST',
+  return apiRequest("/election-status", {
+    method: "POST",
     body: JSON.stringify({ status }),
   });
 }
 
 // ============================================
-// VOTER REGISTRATION API
+// ACTIVE ELECTION
 // ============================================
+export async function getActiveElection() {
+  return apiRequest("/elections/active");
+}
 
+export async function getActiveElectionId(): Promise<string> {
+  const active = await getActiveElection();
+  if (!active?.id) {
+    throw new Error(
+      "No active election found in DB (elections.is_active = true)."
+    );
+  }
+  return active.id as string;
+}
+
+// ============================================
+// VOTER REGISTRATION API (Edge)
+// ============================================
 export async function registerVoter(voterData: {
   studentId: string;
   walletAddress: string;
   department: string;
   year: string;
 }) {
-  return apiRequest('/register-voter', {
-    method: 'POST',
+  return apiRequest("/voters/register-voter", {
+    method: "POST",
     body: JSON.stringify(voterData),
   });
 }
 
 export async function getVoters() {
-  return apiRequest('/voters');
+  return apiRequest("/voters");
 }
 
 export async function checkVoterRegistration(walletAddress: string) {
@@ -82,116 +122,155 @@ export async function checkVoterRegistration(walletAddress: string) {
 }
 
 export async function markVoterAsVoted(walletAddress: string) {
-  return apiRequest('/mark-voted', {
-    method: 'POST',
+  return apiRequest("/mark-voted", {
+    method: "POST",
     body: JSON.stringify({ walletAddress }),
   });
 }
 
 // ============================================
-// CANDIDATE API
+// CATEGORY API (Edge read)
 // ============================================
+export async function getCategories(electionId?: string) {
+  const eid = electionId ?? (await getActiveElectionId());
+  return apiRequest(`/categories?election_id=${encodeURIComponent(eid)}`);
+}
 
-export async function addCandidate(candidateData: {
+async function getCategoryUuidBySlug(slug: string, electionId?: string) {
+  const res = await getCategories(electionId);
+  const cats = res.categories || [];
+
+  const found = cats.find((c: any) => c.slug === slug);
+  if (!found?.id) throw new Error(`No DB category found for slug: ${slug}`);
+  return found.id as string;
+}
+
+export async function updateCategoryBySlug(
+  slug: string,
+  categoryData: {
+    name: string;
+    description?: string;
+    maxVotes?: number;
+    isActive?: boolean;
+  },
+  electionId?: string
+) {
+  const uuid = await getCategoryUuidBySlug(slug, electionId);
+  return apiRequest(`/categories/${uuid}`, {
+    method: "PUT",
+    body: JSON.stringify(categoryData),
+  });
+}
+
+export async function addCategory(categoryData: {
   name: string;
-  position: string;
-  party: string;
-  category?: string;
+  description?: string;
+  maxVotes?: number;
+  isActive?: boolean;
 }) {
-  return apiRequest('/candidates', {
-    method: 'POST',
-    body: JSON.stringify(candidateData),
+  return apiRequest("/categories", {
+    method: "POST",
+    body: JSON.stringify(categoryData),
   });
 }
 
-export async function getCandidates() {
-  return apiRequest('/candidates');
-}
-
-export async function removeCandidate(candidateId: string) {
-  return apiRequest(`/candidates/${candidateId}`, {
-    method: 'DELETE',
+export async function updateCategory(
+  id: string,
+  categoryData: {
+    name: string;
+    description?: string;
+    maxVotes?: number;
+    isActive?: boolean;
+  }
+) {
+  return apiRequest(`/categories/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(categoryData),
   });
 }
 
-export async function updateCandidate(candidateId: string, candidateData: any) {
-  return apiRequest(`/candidates/${candidateId}`, {
-    method: 'PUT',
-    body: JSON.stringify(candidateData),
-  });
-}
-
-// Get election data formatted for voting page
-export async function getElectionDataForVoting() {
-  const [candidatesRes, settings] = await Promise.all([
-    getCandidates(),
-    getElectionSettings()
-  ]);
-
-  const candidates = candidatesRes.candidates || [];
-
-  // Group candidates by position
-  const positionGroups: { [key: string]: any[] } = {};
-
-  candidates.forEach((candidate: any) => {
-    if (!positionGroups[candidate.position]) {
-      positionGroups[candidate.position] = [];
-    }
-    positionGroups[candidate.position].push(candidate);
-  });
-
-  // Convert to positions array format
-  const positions = Object.entries(positionGroups).map(
-    ([position, positionCandidates]) => {
-      const totalVotes = positionCandidates.reduce(
-        (sum, c) => sum + (c.votes || 0),
-        0
-      );
-
-      return {
-        id: position.toLowerCase().replace(/\s+/g, "-"),
-        title: position,
-        candidates: positionCandidates.map((c) => ({
-          ...c,
-          votes: c.votes || 0,
-          percentage: totalVotes > 0 ? ((c.votes || 0) / totalVotes) * 100 : 0,
-        })),
-        totalVotes,
-      };
-    }
-  );
-
-  return {
-    positions,
-    electionTitle: settings.title,
-    startDate: settings.startDate,
-    endDate: settings.endDate,
-    showResultsDuringVoting: settings.showResultsDuringVoting
-  };
+export async function deleteCategory(id: string) {
+  return apiRequest(`/categories/${id}`, { method: "DELETE" });
 }
 
 // ============================================
-// ACTIVITY API
+// CANDIDATES (using Express backend)
 // ============================================
+export type CandidateRow = {
+  id: string;
+  election_id: string;
+  category_id: string;
+  candidate_name: string;
+  party: string | null;
+  manifesto?: string | null;
+  photo_url?: string | null;
+  candidate_number?: number | null;
+  vote_count?: number | null;
+  is_approved?: boolean | null;
+  created_at?: string;
+  updated_at?: string;
+};
 
+export async function getCandidatesByElection(electionId?: string) {
+  const params = electionId
+    ? `?election_id=${encodeURIComponent(electionId)}`
+    : "";
+  return apiRequest(`/candidates${params}`);
+}
+
+export async function addCandidateDb(payload: {
+  election_id?: string;
+  category_id: string;
+  candidate_name: string;
+  party?: string;
+  manifesto?: string;
+  photo_url?: string;
+  is_approved?: boolean;
+}) {
+  return apiRequest("/candidates", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateCandidateDb(
+  candidateId: string,
+  patch: Partial<
+    Pick<
+      CandidateRow,
+      "candidate_name" | "party" | "manifesto" | "photo_url" | "is_approved"
+    >
+  >
+) {
+  return apiRequest(`/candidates/${candidateId}`, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+}
+
+export async function deleteCandidateDb(candidateId: string) {
+  return apiRequest(`/candidates/${candidateId}`, {
+    method: "DELETE",
+  });
+}
+
+// ============================================
+// Legacy Admin data helpers (Edge)
+// ============================================
 export async function getRecentActivities() {
-  return apiRequest('/activities');
+  return apiRequest("/activities");
 }
-
-// ============================================
-// STATISTICS API
-// ============================================
 
 export async function getDashboardStatistics() {
-  return apiRequest('/statistics');
+  return apiRequest("/statistics");
 }
 
 export async function getAdminData() {
   const [stats, voters, candidates, activities] = await Promise.all([
     getDashboardStatistics(),
     getVoters(),
-    getCandidates(),
-    getRecentActivities()
+    apiRequest("/candidates"), // keep your existing edge candidates for now
+    getRecentActivities(),
   ]);
 
   return {
@@ -204,72 +283,76 @@ export async function getAdminData() {
     endDate: stats.endDate,
     candidates: candidates.candidates || [],
     voters: voters.voters || [],
-    activities: activities.activities || []
+    activities: activities.activities || [],
   };
 }
 
-export async function createElection(electionData: {
-  title: string;
-  startDate: string;
-  endDate: string;
-}) {
-  return updateElectionSettings({
-    ...electionData,
-    requireIdVerification: true,
-    showResultsDuringVoting: false
-  });
-}
-
 export async function startElection() {
-  return updateElectionStatus('Active');
+  return updateElectionStatus("Active");
 }
 
 export async function endElection() {
-  return updateElectionStatus('Ended');
+  return updateElectionStatus("Ended");
 }
-
-// ============================================
-// HEALTH CHECK API
-// ============================================
 
 export async function healthCheck() {
-  return apiRequest('/health');
+  return apiRequest("/health");
 }
 
-// ============================================
-// CATEGORY API
-// ============================================
+// ==================================================
+// ✅ Backward-compatible Aliases (Option B)
+// These keep old UI calls working: api.addCandidate / api.removeCandidate
+// while the new DB-first REST functions are addCandidateDb / deleteCandidateDb
+// ==================================================
 
-export async function getCategories() {
-  return apiRequest('/categories');
-}
-
-export async function addCategory(categoryData: {
+/**
+ * OLD UI expected:
+ * api.addCandidate({ name, position, party, category })
+ *
+ * NEW DB expects:
+ * category_id (UUID), candidate_name, party, election_id (optional)
+ *
+ * This alias maps slug (cat1/cat2/cat3) -> category UUID then inserts into DB.
+ */
+export async function addCandidate(candidateData: {
   name: string;
-  description?: string;
-  maxVotes?: number;
-  isActive?: boolean;
+  position: string; // kept for UI compatibility
+  party: string;
+  category: string; // slug cat1/cat2/cat3
 }) {
-  return apiRequest('/categories', {
-    method: 'POST',
-    body: JSON.stringify(categoryData),
+  // 1) Load categories -> find UUID by slug
+  const catsRes = await getCategories();
+  const cats = catsRes?.categories || [];
+
+  const found = cats.find((c: any) => c.slug === candidateData.category);
+  if (!found?.id) {
+    throw new Error(
+      `Invalid category slug "${candidateData.category}". Must match existing category slug.`
+    );
+  }
+
+  // 2) Insert into DB using category UUID
+  const created = await addCandidateDb({
+    category_id: found.id,
+    candidate_name: candidateData.name,
+    party: candidateData.party,
+    is_approved: true,
   });
+
+  return {
+    success: true,
+    candidate: created?.candidate ?? null,
+  };
 }
 
-export async function updateCategory(id: string, categoryData: {
-  name: string;
-  description?: string;
-  maxVotes?: number;
-  isActive?: boolean;
-}) {
-  return apiRequest(`/categories/${id}`, {
-    method: 'PUT',
-    body: JSON.stringify(categoryData),
-  });
-}
-
-export async function deleteCategory(id: string) {
-  return apiRequest(`/categories/${id}`, {
-    method: 'DELETE',
-  });
+/**
+ * OLD UI expected:
+ * api.removeCandidate(candidateId)
+ *
+ * NEW DB function:
+ * deleteCandidateDb(candidateId)
+ */
+export async function removeCandidate(candidateId: string) {
+  await deleteCandidateDb(candidateId);
+  return { success: true };
 }

@@ -1,13 +1,25 @@
 import { useState } from "react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Alert, AlertDescription } from "./ui/alert";
 import { Separator } from "./ui/separator";
 import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from "lucide-react";
-import { loginUser, loginAdmin, loginWithGoogle, loginWithMicrosoft } from "../lib/auth";
+import {
+  loginUser,
+  loginAdmin,
+  loginWithGoogle,
+  loginWithMicrosoft,
+} from "../lib/auth";
 import { createSession } from "../lib/session";
 
 const apuLogo = "/apu-logo.png";
@@ -46,12 +58,15 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         createSession(result.user, result.token || "");
 
         // Check if user was trying to access elections
-        const intendedDestination = localStorage.getItem('intendedDestination');
-        if (intendedDestination === 'elections' || intendedDestination === 'vote') {
-          localStorage.removeItem('intendedDestination');
-          onNavigate('vote');
+        const intendedDestination = localStorage.getItem("intendedDestination");
+        if (
+          intendedDestination === "elections" ||
+          intendedDestination === "vote"
+        ) {
+          localStorage.removeItem("intendedDestination");
+          onNavigate("vote");
         } else {
-          onNavigate('home');
+          onNavigate("home");
         }
       } else {
         setError(result.message || "Invalid credentials. Please try again.");
@@ -75,9 +90,11 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       if (result.success) {
         // Use createSession to properly encrypt and store the session
         createSession(result.user, result.token || "");
-        onNavigate('admin');
+        onNavigate("admin");
       } else {
-        setError(result.message || "Invalid admin credentials. Please try again.");
+        setError(
+          result.message || "Invalid admin credentials. Please try again."
+        );
       }
     } catch (error) {
       setError("An error occurred during admin login. Please try again.");
@@ -92,14 +109,20 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
     setError("");
 
     try {
-      const result = provider === "google" ? await loginWithGoogle() : await loginWithMicrosoft();
+      const result =
+        provider === "google"
+          ? await loginWithGoogle()
+          : await loginWithMicrosoft();
 
       if (result.success) {
         // Use createSession to properly encrypt and store the session
         createSession(result.user, result.token || "");
-        onNavigate('home');
+        onNavigate("home");
       } else {
-        setError(result.message || `Failed to login with ${provider}. Please try again.`);
+        setError(
+          result.message ||
+            `Failed to login with ${provider}. Please try again.`
+        );
       }
     } catch (error) {
       setError(`An error occurred during ${provider} login. Please try again.`);
@@ -110,7 +133,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center py-12 px-6">
+    <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white flex items-center justify-center py-16 px-6 md:px-8">
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="flex items-center">
@@ -118,20 +141,30 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
               variant="ghost"
               size="sm"
               className="gap-1 mr-auto"
-              onClick={() => onNavigate('home')}
+              onClick={() => onNavigate("home")}
             >
               <ArrowLeft className="h-4 w-4" />
               Back
             </Button>
           </div>
           <div className="flex items-center gap-3 mb-4">
-            <img src={apuLogo} alt="Asia Pacific University Logo" className="h-10 w-auto ml-4" />
+            <img
+              src={apuLogo}
+              alt="Asia Pacific University Logo"
+              className="h-10 w-auto ml-4"
+            />
             <CardTitle>Login to APU VOTE</CardTitle>
           </div>
-          <CardDescription>Access your account to participate in elections</CardDescription>
+          <CardDescription>
+            Access your account to participate in elections
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className="w-full"
+          >
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="student">Student Login</TabsTrigger>
               <TabsTrigger value="admin">Admin Login</TabsTrigger>
@@ -141,7 +174,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
               {/* Social Login Options */}
               <div className="space-y-3">
                 <div className="text-center">
-                  <p className="text-slate-600 mb-4">Sign in with your university account</p>
+                  <p className="text-slate-600 mb-4">
+                    Sign in with your university account
+                  </p>
                 </div>
 
                 <Button
@@ -172,7 +207,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                       />
                     </svg>
                   )}
-                  {socialLoading === "google" ? "Signing in..." : "Continue with Google"}
+                  {socialLoading === "google"
+                    ? "Signing in..."
+                    : "Continue with Google"}
                 </Button>
 
                 <Button
@@ -191,7 +228,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                       <path fill="#FFB900" d="M13 13h10v10H13z" />
                     </svg>
                   )}
-                  {socialLoading === "microsoft" ? "Signing in..." : "Continue with Microsoft"}
+                  {socialLoading === "microsoft"
+                    ? "Signing in..."
+                    : "Continue with Microsoft"}
                 </Button>
 
                 <div className="relative">
@@ -199,7 +238,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                     <Separator className="w-full" />
                   </div>
                   <div className="relative flex justify-center">
-                    <span className="bg-white px-2 text-slate-600">Or continue with</span>
+                    <span className="bg-white px-2 text-slate-600">
+                      Or continue with
+                    </span>
                   </div>
                 </div>
               </div>
@@ -212,7 +253,12 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                     id="studentId"
                     placeholder="Enter your student ID"
                     value={studentForm.studentId}
-                    onChange={(e) => setStudentForm({ ...studentForm, studentId: e.target.value })}
+                    onChange={(e) =>
+                      setStudentForm({
+                        ...studentForm,
+                        studentId: e.target.value,
+                      })
+                    }
                     required
                   />
                 </div>
@@ -224,7 +270,12 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
                       value={studentForm.password}
-                      onChange={(e) => setStudentForm({ ...studentForm, password: e.target.value })}
+                      onChange={(e) =>
+                        setStudentForm({
+                          ...studentForm,
+                          password: e.target.value,
+                        })
+                      }
                       required
                     />
                     <Button
@@ -250,7 +301,11 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   </Alert>
                 )}
 
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading || socialLoading !== null}>
+                <Button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={loading || socialLoading !== null}
+                >
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -264,7 +319,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
 
               <div className="text-center space-y-2">
                 <button
-                  onClick={() => onNavigate('forgot-password')}
+                  onClick={() => onNavigate("forgot-password")}
                   className="text-sm text-emerald-600 hover:underline"
                 >
                   Forgot your password?
@@ -272,7 +327,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                 <p className="text-slate-600">
                   Don't have an account?{" "}
                   <button
-                    onClick={() => onNavigate('register')}
+                    onClick={() => onNavigate("register")}
                     className="text-emerald-600 hover:underline"
                   >
                     Register here
@@ -290,7 +345,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                     type="email"
                     placeholder="Enter your admin email"
                     value={adminForm.email}
-                    onChange={(e) => setAdminForm({ ...adminForm, email: e.target.value })}
+                    onChange={(e) =>
+                      setAdminForm({ ...adminForm, email: e.target.value })
+                    }
                     required
                   />
                 </div>
@@ -302,7 +359,9 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your admin password"
                       value={adminForm.password}
-                      onChange={(e) => setAdminForm({ ...adminForm, password: e.target.value })}
+                      onChange={(e) =>
+                        setAdminForm({ ...adminForm, password: e.target.value })
+                      }
                       required
                     />
                     <Button
@@ -328,7 +387,11 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   </Alert>
                 )}
 
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={loading || socialLoading !== null}>
+                <Button
+                  type="submit"
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                  disabled={loading || socialLoading !== null}
+                >
                   {loading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -350,7 +413,8 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         </CardContent>
         <CardFooter className="flex justify-center border-t pt-4">
           <p className="text-slate-600 text-center">
-            By signing in, you agree to the APU VOTE terms of service and privacy policy.
+            By signing in, you agree to the APU VOTE terms of service and
+            privacy policy.
           </p>
         </CardFooter>
       </Card>
