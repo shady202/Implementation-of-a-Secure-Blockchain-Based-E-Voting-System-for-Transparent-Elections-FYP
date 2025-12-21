@@ -26,30 +26,29 @@ export function UserNav({ onNavigate }: UserNavProps) {
   const handleLogout = () => {
     logout();
     setUser(null);
-    onNavigate('home');
+    onNavigate("home");
   };
 
   if (!user) {
     return (
       <div className="flex items-center gap-4">
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           size="sm"
-          onClick={() => onNavigate('register')}
+          onClick={() => onNavigate("register")}
         >
           Register
         </Button>
-        <Button 
-          size="sm"
-          onClick={() => onNavigate('login')}
-        >
+        <Button size="sm" onClick={() => onNavigate("login")}>
           Sign In
         </Button>
       </div>
     );
   }
 
-  const initials = `${user.firstName?.[0] || ""}${user.lastName?.[0] || ""}`.toUpperCase();
+  const initials = `${user.firstName?.[0] || ""}${
+    user.lastName?.[0] || ""
+  }`.toUpperCase();
 
   return (
     <DropdownMenu>
@@ -67,26 +66,51 @@ export function UserNav({ onNavigate }: UserNavProps) {
               {user.firstName} {user.lastName}
             </p>
             <p className="text-xs leading-none text-slate-600">{user.email}</p>
-            {user.studentId && <p className="text-xs leading-none text-slate-600">ID: {user.studentId}</p>}
+            {user.studentId && (
+              <p className="text-xs leading-none text-slate-600">
+                ID: {user.studentId}
+              </p>
+            )}
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onNavigate('elections')} className="cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onNavigate("elections")}
+          className="cursor-pointer"
+        >
           <Vote className="mr-2 h-4 w-4" />
           <span>Vote Now</span>
         </DropdownMenuItem>
         {!isAdmin() && (
-          <DropdownMenuItem onClick={() => onNavigate('voter')} className="cursor-pointer">
-            <User className="mr-2 h-4 w-4" />
-            <span>Dashboard</span>
-          </DropdownMenuItem>
+          <>
+            <DropdownMenuItem
+              onClick={() => onNavigate("voter")}
+              className="cursor-pointer"
+            >
+              <User className="mr-2 h-4 w-4" />
+              <span>Dashboard</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() => onNavigate("my-votes")}
+              className="cursor-pointer"
+            >
+              <Vote className="mr-2 h-4 w-4" />
+              <span>My Vote Receipts</span>
+            </DropdownMenuItem>
+          </>
         )}
-        <DropdownMenuItem onClick={() => onNavigate('settings')} className="cursor-pointer">
+        <DropdownMenuItem
+          onClick={() => onNavigate("settings")}
+          className="cursor-pointer"
+        >
           <Settings className="mr-2 h-4 w-4" />
           <span>Settings</span>
         </DropdownMenuItem>
         {isAdmin() && (
-          <DropdownMenuItem onClick={() => onNavigate('admin')} className="cursor-pointer">
+          <DropdownMenuItem
+            onClick={() => onNavigate("admin")}
+            className="cursor-pointer"
+          >
             <Shield className="mr-2 h-4 w-4" />
             <span>Admin Dashboard</span>
           </DropdownMenuItem>

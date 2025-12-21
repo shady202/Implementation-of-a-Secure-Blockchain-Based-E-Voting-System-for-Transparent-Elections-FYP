@@ -19,33 +19,32 @@ import { StudentDashboard } from "./components/StudentDashboard";
 import { ManageCategoriesPage } from "./components/ManageCategoriesPage";
 import { SystemSettingsPage } from "./components/SystemSettingsPage";
 import { ElectionsPage } from "./components/ElectionsPage";
+import { MyVotesPage } from "./components/MyVotesPage";
+import { VoteSuccessPage } from "./components/VoteSuccessPage";
 import { Toaster } from "sonner";
 
 export default function App() {
-  const [currentPage, setCurrentPage] =
-    useState<string>("home");
+  const [currentPage, setCurrentPage] = useState<string>("home");
+  const [transactionHash, setTransactionHash] = useState<string>("");
 
-  const handleNavigate = (page: string) => {
+  const handleNavigate = (page: string, txHash?: string) => {
+    if (txHash) {
+      setTransactionHash(txHash);
+    }
     setCurrentPage(page);
   };
 
   return (
     <>
-      {currentPage === "home" && (
-        <HomePage onNavigate={handleNavigate} />
-      )}
+      {currentPage === "home" && <HomePage onNavigate={handleNavigate} />}
       {currentPage === "admin" && (
         <AdminDashboard onNavigate={handleNavigate} />
       )}
-      {currentPage === "results" && (
-        <ResultsPage onNavigate={handleNavigate} />
-      )}
+      {currentPage === "results" && <ResultsPage onNavigate={handleNavigate} />}
       {currentPage === "new-results" && (
         <NewResultsPage onNavigate={handleNavigate} />
       )}
-      {currentPage === "about" && (
-        <AboutPage onNavigate={handleNavigate} />
-      )}
+      {currentPage === "about" && <AboutPage onNavigate={handleNavigate} />}
       {currentPage === "manage-categories" && (
         <ManageCategoriesPage onNavigate={handleNavigate} />
       )}
@@ -58,21 +57,11 @@ export default function App() {
       {currentPage === "verify-eligibility" && (
         <VerifyEligibilityPage onNavigate={handleNavigate} />
       )}
-      {currentPage === "vote" && (
-        <VotePage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "contact" && (
-        <ContactPage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "login" && (
-        <LoginPage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "privacy" && (
-        <PrivacyPage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "terms" && (
-        <TermsPage onNavigate={handleNavigate} />
-      )}
+      {currentPage === "vote" && <VotePage onNavigate={handleNavigate} />}
+      {currentPage === "contact" && <ContactPage onNavigate={handleNavigate} />}
+      {currentPage === "login" && <LoginPage onNavigate={handleNavigate} />}
+      {currentPage === "privacy" && <PrivacyPage onNavigate={handleNavigate} />}
+      {currentPage === "terms" && <TermsPage onNavigate={handleNavigate} />}
       {currentPage === "settings" && (
         <SettingsPage onNavigate={handleNavigate} />
       )}
@@ -87,6 +76,15 @@ export default function App() {
       )}
       {currentPage === "voter" && (
         <StudentDashboard onNavigate={handleNavigate} />
+      )}
+      {currentPage === "my-votes" && (
+        <MyVotesPage onNavigate={handleNavigate} />
+      )}
+      {currentPage === "vote-success" && (
+        <VoteSuccessPage
+          onNavigate={handleNavigate}
+          transactionHash={transactionHash}
+        />
       )}
       <Toaster richColors position="top-right" />
     </>

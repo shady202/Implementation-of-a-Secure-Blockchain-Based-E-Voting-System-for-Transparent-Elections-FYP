@@ -13,23 +13,29 @@ router.get("/", optionalAuth, async (req, res) => {
   try {
     let electionId = req.query.election_id as string;
 
-    // If no election_id provided, get active election
+    // If no election_id provided, try to get active election
+    // But also allow fetching categories with NULL election_id
     if (!electionId) {
       const activeElection = await query(
         "SELECT id FROM elections WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
       );
 
-      if (activeElection.rows.length === 0) {
-        return res.status(404).json({ error: "No active election found" });
+      // If there's an active election, use it
+      // Otherwise, will fetch categories with NULL election_id below
+      if (activeElection.rows.length > 0) {
+        electionId = activeElection.rows[0].id;
       }
-
-      electionId = activeElection.rows[0].id;
     }
 
-    const result = await query(
-      "SELECT * FROM categories WHERE election_id = $1 ORDER BY created_at ASC",
-      [electionId]
-    );
+    // Fetch categories: either for specific election OR with NULL election_id
+    const result = electionId
+      ? await query(
+          "SELECT * FROM categories WHERE election_id = $1 ORDER BY created_at ASC",
+          [electionId]
+        )
+      : await query(
+          "SELECT * FROM categories WHERE election_id IS NULL ORDER BY created_at ASC"
+        );
 
     res.json({ categories: result.rows });
   } catch (error) {

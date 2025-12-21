@@ -35,8 +35,10 @@ import { NETWORKS } from "../lib/networks";
 import { toast } from "sonner";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
-import { registerVoter as registerVoterAPI } from "../lib/api";
-import { projectId, publicAnonKey } from "../utils/supabase/info";
+import {
+  registerVoter as registerVoterAPI,
+  checkVoterRegistration,
+} from "../lib/api";
 
 const apuLogo = "/apu-logo.png";
 
@@ -126,16 +128,7 @@ export function VoterRegistrationPage({
 
       // Check backend registration
       try {
-        const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-14835f38/voter/${address}`,
-          {
-            headers: {
-              Authorization: `Bearer ${publicAnonKey}`,
-            },
-          }
-        );
-
-        const data = await response.json();
+        const data = await checkVoterRegistration(address);
         if (data?.registered) {
           toast.success("Wallet already registered!");
           onNavigate("vote");
@@ -236,36 +229,42 @@ export function VoterRegistrationPage({
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">Voter Registration</span>
+            <span className="text-slate-900">APU VOTE</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
               onClick={() => onNavigate("home")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Home
             </button>
             <button
               onClick={() => onNavigate("vote")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
             <button
               onClick={() => onNavigate("results")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Results
             </button>
             <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
               onClick={() => onNavigate("about")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               About
             </button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Contact
             </button>
@@ -320,7 +319,7 @@ export function VoterRegistrationPage({
                   <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
                   <h3 className="text-slate-900">Registration Successful!</h3>
                   <p className="text-slate-600 mt-2 mb-6">
-                    You are now registered to vote in the upcoming elections.
+                    You are now registered to vote.
                   </p>
                   <Button onClick={() => onNavigate("vote")}>
                     Go to Voting Page
@@ -450,7 +449,7 @@ export function VoterRegistrationPage({
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="department">Department</Label>
+                    <Label htmlFor="department">Faculty</Label>
                     <Select
                       value={formData.department}
                       onValueChange={(value) =>
@@ -459,16 +458,24 @@ export function VoterRegistrationPage({
                       required
                     >
                       <SelectTrigger id="department">
-                        <SelectValue placeholder="Select your department" />
+                        <SelectValue placeholder="Select your faculty" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="computer-science">
-                          Computer Science
+                        <SelectItem value="School of Computing">
+                          School of Computing
                         </SelectItem>
-                        <SelectItem value="engineering">Engineering</SelectItem>
-                        <SelectItem value="business">Business</SelectItem>
-                        <SelectItem value="arts">Arts & Humanities</SelectItem>
-                        <SelectItem value="science">Science</SelectItem>
+                        <SelectItem value="School of Engineering">
+                          School of Engineering
+                        </SelectItem>
+                        <SelectItem value="School of Business">
+                          School of Business
+                        </SelectItem>
+                        <SelectItem value="School of Media & Design">
+                          School of Media & Design
+                        </SelectItem>
+                        <SelectItem value="School of Science">
+                          School of Science
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -533,25 +540,27 @@ export function VoterRegistrationPage({
         </div>
       </main>
 
-      <footer className="w-full border-t py-6 mt-auto">
+      <footer className="w-full border-t py-6 bg-white mt-auto">
         <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
-          <div className="text-center text-slate-600 md:text-left">
-            &copy; {new Date().getFullYear()} APU Vote Chain. All rights
-            reserved.
+          <div className="text-center text-sm text-slate-600 md:text-left">
+            © {new Date().getFullYear()} APU Vote Chain. All rights reserved.
           </div>
-          <div className="flex gap-4">
-            <button className="text-sm text-slate-600 hover:underline">
+          <div className="flex gap-6">
+            <button
+              onClick={() => onNavigate("terms")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
               Terms
             </button>
             <button
               onClick={() => onNavigate("privacy")}
-              className="text-sm text-slate-600 hover:underline"
+              className="text-sm text-slate-600 hover:text-slate-900"
             >
               Privacy
             </button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm text-slate-600 hover:underline"
+              className="text-sm text-slate-600 hover:text-slate-900"
             >
               Contact
             </button>

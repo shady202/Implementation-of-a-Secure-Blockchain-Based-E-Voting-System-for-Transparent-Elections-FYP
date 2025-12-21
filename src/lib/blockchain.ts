@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 import VotingSystemABI from "./VotingSystemABI";
 import { toast } from "sonner";
 
-export const CONTRACT_ADDRESS = "0x7E7B7e71ae3D0b1E2E75701929E6885c7b5a4B91";
+export const CONTRACT_ADDRESS = "0x50a7daAbE0ca9ec92B5f6687dBb28e060e3E317f";
 
 /* ================= PROVIDER ================= */
 
@@ -71,12 +71,22 @@ export const resetSystem = async () => {
   toast.success("System reset");
 };
 
+export const autoEndElection = async () => {
+  const contract = await getContract(true);
+  const tx = await contract.autoEndElection();
+  toast.info("Ending election automatically...");
+  await tx.wait();
+  toast.success("Election auto-ended");
+};
+
 export const getElectionState = async () => {
   const contract = await getContract(false);
   const e = await contract.currentElection();
+  const effectiveState = await contract.getEffectiveState();
+  const isPaused = await contract.paused();
 
   // Solidity enum: None=0, Created=1, Active=2, Ended=3
-  const state = Number(e.state);
+  const state = Number(effectiveState); // Use effective state for UI
 
   return {
     title: e.title,
@@ -89,11 +99,47 @@ export const getElectionState = async () => {
     isCreated: state === 1, // Election created, in setup phase
     isActive: state === 2, // Election is active/ongoing
     hasEnded: state === 3, // Election has ended
+    isPaused,
+  };
+};
+
+export const getElectionSummary = async () => {
+  const contract = await getContract(false);
+  const s = await contract.getElectionSummary();
+  return {
+    title: s.title,
+    startTime: Number(s.startTime),
+    endTime: Number(s.endTime),
+    state: Number(s.state),
+    effectiveState: Number(s.effectiveState),
+    totalVoters: Number(s.totalVoters),
+    totalVotes: Number(s.totalVotes),
+    categoriesCount: Number(s.categoriesCount),
+    candidatesCount: Number(s.candidatesCount),
+    isPaused: s.isPaused,
   };
 };
 
 // ✅ for your AdminDashboard/VotePage imports
 export const getElectionInfo = getElectionState;
+
+/* ================= EMERGENCY ================= */
+
+export const pauseSystem = async () => {
+  const contract = await getContract(true);
+  const tx = await contract.pause();
+  toast.info("Pausing system...");
+  await tx.wait();
+  toast.success("System paused");
+};
+
+export const unpauseSystem = async () => {
+  const contract = await getContract(true);
+  const tx = await contract.unpause();
+  toast.info("Unpausing system...");
+  await tx.wait();
+  toast.success("System unpaused");
+};
 
 /* ================= CATEGORIES ================= */
 
@@ -108,7 +154,6 @@ export const createCategory = async (
 
   let categoryId = 0;
 
-  // Best-effort event parse (depends on ABI)
   try {
     const event = receipt.logs.find(
       (l: any) => l.fragment?.name === "CategoryCreated"
@@ -238,20 +283,27 @@ export const registerVoter = async (
   toast.success("Voter registered");
 };
 
-export const isVoterRegistered = async (): Promise<boolean> => {
-  try {
-    // For now, use localStorage to track registration
-    // The contract doesn't expose a direct voters(address) getter
-    const localCheck = localStorage.getItem("voterRegistrationCompleted");
-    if (localCheck === "true") {
-      console.log("✅ Voter registered (localStorage)");
-      return true;
-    }
+export const getVoterInfo = async (voterAddress: string) => {
+  const contract = await getContract(false);
+  const info = await contract.getVoterInfo(voterAddress);
+  return {
+    studentId: info.studentId,
+    department: info.department,
+    yearOfStudy: Number(info.yearOfStudy),
+    isRegistered: info.isRegistered,
+    votedCategoriesCount: Number(info.votedCategoriesCount),
+  };
+};
 
-    // TODO: Once voter registration is synced with backend,
-    // we can query the database via API instead
-    console.log("❌ Voter not registered");
-    return false;
+export const isVoterRegistered = async (address?: string): Promise<boolean> => {
+  try {
+    if (!address) {
+      const provider = getProvider();
+      const signer = await provider.getSigner();
+      address = await signer.getAddress();
+    }
+    const info = await getVoterInfo(address);
+    return info.isRegistered;
   } catch (err) {
     console.error("Error checking voter registration:", err);
     return false;
@@ -278,6 +330,43 @@ export const castVote = async (categoryId: number, candidateId: number) => {
 
 // ✅ Some pages import vote()
 export const vote = castVote;
+
+export const batchVote = async (
+  votes: Array<{ categoryId: number; candidateId: number }>
+): Promise<{ transactionHash: string }> => {
+  const contract = await getContract(true);
+  const tx = await contract.batchVote(votes);
+  toast.info("Submitting batch votes...");
+  const receipt = await tx.wait();
+  toast.success("All votes recorded");
+
+  return {
+    transactionHash: receipt.hash,
+  };
+};
+
+/* ================= VOTE VERIFICATION ================= */
+
+export interface VoteReceipt {
+  categoryId: number;
+  categoryName: string;
+  candidateId: number;
+  candidateName: string;
+  timestamp: Date;
+  transactionHash?: string;
+}
+
+export const getMyVotes = async (): Promise<VoteReceipt[]> => {
+  const contract = await getContract(false);
+  const receipts = await contract.getMyVotes();
+  return receipts.map((r: any) => ({
+    categoryId: Number(r.categoryId),
+    categoryName: r.categoryName,
+    candidateId: Number(r.candidateId),
+    candidateName: r.candidateName,
+    timestamp: new Date(Number(r.timestamp) * 1000),
+  }));
+};
 
 /* ================= ELIGIBILITY (basic placeholder) ================= */
 // If you want “real verification”, use lib/api.ts below.

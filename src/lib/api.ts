@@ -356,3 +356,15 @@ export async function removeCandidate(candidateId: string) {
   await deleteCandidateDb(candidateId);
   return { success: true };
 }
+
+// ==================================================
+// SYSTEM RESET
+// ==================================================
+/**
+ * Reset entire database - clears all elections, categories, candidates, and voters
+ */
+export async function resetDatabase() {
+  return apiRequest("/reset", {
+    method: "POST",
+  });
+}

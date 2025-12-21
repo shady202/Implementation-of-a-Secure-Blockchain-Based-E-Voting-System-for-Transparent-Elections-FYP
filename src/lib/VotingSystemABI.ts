@@ -1,5 +1,4 @@
-// ABI for the VotingSystem smart contract
-const VotingSystemABI = [
+export default [
   {
     inputs: [
       {
@@ -31,8 +30,59 @@ const VotingSystemABI = [
   },
   {
     inputs: [],
+    name: "autoEndElection",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        components: [
+          {
+            internalType: "uint256",
+            name: "categoryId",
+            type: "uint256",
+          },
+          {
+            internalType: "uint256",
+            name: "candidateId",
+            type: "uint256",
+          },
+        ],
+        internalType: "struct VotingSystem.VoteChoice[]",
+        name: "votes",
+        type: "tuple[]",
+      },
+    ],
+    name: "batchVote",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    inputs: [],
     stateMutability: "nonpayable",
     type: "constructor",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: true,
+        internalType: "address",
+        name: "voter",
+        type: "address",
+      },
+      {
+        indexed: false,
+        internalType: "uint256",
+        name: "voteCount",
+        type: "uint256",
+      },
+    ],
+    name: "BatchVoteCast",
+    type: "event",
   },
   {
     anonymous: false,
@@ -218,6 +268,19 @@ const VotingSystemABI = [
     inputs: [
       {
         indexed: false,
+        internalType: "uint256",
+        name: "timestamp",
+        type: "uint256",
+      },
+    ],
+    name: "ElectionAutoEnded",
+    type: "event",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
         internalType: "string",
         name: "title",
         type: "string",
@@ -272,6 +335,26 @@ const VotingSystemABI = [
     type: "function",
   },
   {
+    inputs: [],
+    name: "pause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: "address",
+        name: "admin",
+        type: "address",
+      },
+    ],
+    name: "Paused",
+    type: "event",
+  },
+  {
     inputs: [
       {
         internalType: "string",
@@ -319,6 +402,26 @@ const VotingSystemABI = [
       },
     ],
     name: "SystemReset",
+    type: "event",
+  },
+  {
+    inputs: [],
+    name: "unpause",
+    outputs: [],
+    stateMutability: "nonpayable",
+    type: "function",
+  },
+  {
+    anonymous: false,
+    inputs: [
+      {
+        indexed: false,
+        internalType: "address",
+        name: "admin",
+        type: "address",
+      },
+    ],
+    name: "Unpaused",
     type: "event",
   },
   {
@@ -584,6 +687,156 @@ const VotingSystemABI = [
     type: "function",
   },
   {
+    inputs: [],
+    name: "getEffectiveState",
+    outputs: [
+      {
+        internalType: "enum VotingSystem.ElectionState",
+        name: "",
+        type: "uint8",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "getElectionSummary",
+    outputs: [
+      {
+        internalType: "string",
+        name: "title",
+        type: "string",
+      },
+      {
+        internalType: "uint256",
+        name: "startTime",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "endTime",
+        type: "uint256",
+      },
+      {
+        internalType: "enum VotingSystem.ElectionState",
+        name: "state",
+        type: "uint8",
+      },
+      {
+        internalType: "enum VotingSystem.ElectionState",
+        name: "effectiveState",
+        type: "uint8",
+      },
+      {
+        internalType: "uint256",
+        name: "totalVoters",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "totalVotes",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "categoriesCount",
+        type: "uint256",
+      },
+      {
+        internalType: "uint256",
+        name: "candidatesCount",
+        type: "uint256",
+      },
+      {
+        internalType: "bool",
+        name: "isPaused",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "getMyVotes",
+    outputs: [
+      {
+        components: [
+          {
+            internalType: "uint256",
+            name: "categoryId",
+            type: "uint256",
+          },
+          {
+            internalType: "string",
+            name: "categoryName",
+            type: "string",
+          },
+          {
+            internalType: "uint256",
+            name: "candidateId",
+            type: "uint256",
+          },
+          {
+            internalType: "string",
+            name: "candidateName",
+            type: "string",
+          },
+          {
+            internalType: "uint256",
+            name: "timestamp",
+            type: "uint256",
+          },
+        ],
+        internalType: "struct VotingSystem.VoteReceipt[]",
+        name: "",
+        type: "tuple[]",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [
+      {
+        internalType: "address",
+        name: "voterAddress",
+        type: "address",
+      },
+    ],
+    name: "getVoterInfo",
+    outputs: [
+      {
+        internalType: "string",
+        name: "studentId",
+        type: "string",
+      },
+      {
+        internalType: "string",
+        name: "department",
+        type: "string",
+      },
+      {
+        internalType: "uint256",
+        name: "yearOfStudy",
+        type: "uint256",
+      },
+      {
+        internalType: "bool",
+        name: "isRegistered",
+        type: "bool",
+      },
+      {
+        internalType: "uint256",
+        name: "votedCategoriesCount",
+        type: "uint256",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
     inputs: [
       {
         internalType: "address",
@@ -597,6 +850,19 @@ const VotingSystemABI = [
       },
     ],
     name: "hasVotedInCategory",
+    outputs: [
+      {
+        internalType: "bool",
+        name: "",
+        type: "bool",
+      },
+    ],
+    stateMutability: "view",
+    type: "function",
+  },
+  {
+    inputs: [],
+    name: "paused",
     outputs: [
       {
         internalType: "bool",
@@ -626,5 +892,4 @@ const VotingSystemABI = [
     stateMutability: "view",
     type: "function",
   },
-];
-export default VotingSystemABI;
+] as const;

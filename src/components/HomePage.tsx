@@ -7,6 +7,7 @@ import {
   CardTitle,
 } from "./ui/card";
 import { Badge } from "./ui/badge";
+import { Progress } from "./ui/progress";
 import { Shield, Lock, Check, ChevronRight } from "lucide-react";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
@@ -133,25 +134,31 @@ export function HomePage({ onNavigate }: HomePageProps) {
             </button>
             <button
               onClick={handleElectionsClick}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
             <button
               onClick={() => onNavigate("results")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Results
             </button>
             <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
               onClick={() => onNavigate("about")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               About
             </button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Contact
             </button>
@@ -237,7 +244,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   <Card
                     className={`w-full max-w-sm border-2 ${
                       electionData.isActive
-                        ? "border-emerald-400"
+                        ? "border-emerald-500"
                         : "border-slate-300"
                     } shadow-lg`}
                   >
@@ -258,7 +265,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
                           <Badge
                             className={`${
                               electionData.status === "Active"
-                                ? "bg-emerald-500 hover:bg-emerald-600"
+                                ? "bg-emerald-500 hover:bg-emerald-500"
                                 : electionData.status === "Ended"
                                 ? "bg-red-500 hover:bg-red-600"
                                 : "bg-slate-500 hover:bg-slate-600"
@@ -269,22 +276,18 @@ export function HomePage({ onNavigate }: HomePageProps) {
                         </div>
                         {electionData.isActive && (
                           <>
-                            <div className="h-2 w-full rounded-full bg-slate-200">
-                              <div
-                                className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                                style={{
-                                  width: `${
-                                    electionData.startDate !== "TBD" &&
-                                    electionData.endDate !== "TBD"
-                                      ? Math.min(
-                                          75,
-                                          Math.max(10, Math.random() * 100)
-                                        )
-                                      : 0
-                                  }%`,
-                                }}
-                              ></div>
-                            </div>
+                            <Progress
+                              value={
+                                electionData.startDate !== "TBD" &&
+                                electionData.endDate !== "TBD"
+                                  ? Math.min(
+                                      75,
+                                      Math.max(10, Math.random() * 100)
+                                    )
+                                  : 0
+                              }
+                              className="mt-2"
+                            />
                             <div className="flex justify-between text-xs text-slate-600">
                               <span>Started: {electionData.startDate}</span>
                               <span>Ends: {electionData.endDate}</span>

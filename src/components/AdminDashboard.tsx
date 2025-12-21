@@ -31,6 +31,8 @@ import {
   addCandidate,
   deactivateCandidate,
   getCandidatesForCategory,
+  pauseSystem,
+  unpauseSystem,
 } from "../lib/blockchain";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -61,6 +63,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+import { Progress } from "./ui/progress";
 
 const apuLogo = "/apu-logo.png";
 
@@ -124,10 +127,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     contractId: "",
   });
   const [showResultsDuringVoting, setShowResultsDuringVoting] = useState(false);
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [voters, setVoters] = useState<Voter[]>([]);
 
-  // Admin data derived from election state
+  // Admin data derived from election state and fetched data
   const adminData = {
-    registeredVoters: election?.totalVoters || 0,
+    registeredVoters: election?.totalVoters || voters.length || 0,
     totalVoters: 100, // Placeholder - you can adjust
     votesCount: election?.totalVotes || 0,
     electionStatus:
@@ -154,33 +159,66 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         categories.find((cat) => cat.id === c.categoryId)?.name || "Unknown",
       party: c.party,
     })),
-    voters: [] as Voter[], // Blockchain doesn't expose voter list directly
-    activities: [] as Activity[], // Placeholder for activities
+    voters: voters,
+    activities: activities,
+  };
+
+  // Fetch activities from backend
+  const fetchActivities = async () => {
+    try {
+      const response = await fetch(
+        "http://localhost:3001/api/admin/activities"
+      );
+      const data = await response.json();
+      setActivities(data.activities || []);
+    } catch (error) {
+      console.error("Error fetching activities:", error);
+      setActivities([]);
+    }
+  };
+
+  // Fetch voters from backend
+  const fetchVoters = async () => {
+    try {
+      const response = await fetch("http://localhost:3001/api/admin/voters");
+      const data = await response.json();
+      setVoters(data.voters || []);
+    } catch (error) {
+      console.error("Error fetching voters:", error);
+      setVoters([]);
+    }
   };
 
   const loadAll = async () => {
     try {
       setLoading(true);
-
       const e = await getElectionInfo();
       const cats = await getAllCategories();
 
       const allCandidates: Candidate[] = [];
-      for (const c of cats as Category[]) {
-        const cand = await getCandidatesForCategory(c.id);
-        (cand as any[]).forEach((x) => {
-          allCandidates.push({
-            id: Number(x.id),
-            name: String(x.name),
-            party: String(x.party),
-            categoryId: c.id,
-          });
-        });
+      if (cats.length > 0) {
+        await Promise.all(
+          cats.map(async (cat: Category) => {
+            const catCands = await getCandidatesForCategory(cat.id);
+            (catCands as any[]).forEach((c: any) => {
+              allCandidates.push({
+                id: Number(c.id),
+                name: String(c.name),
+                party: String(c.party),
+                categoryId: cat.id,
+              });
+            });
+          })
+        );
       }
 
       setElection(e);
       setCategories(cats as Category[]);
       setCandidates(allCandidates);
+
+      // Fetch activities and voters from backend
+      await fetchActivities();
+      await fetchVoters();
     } catch (err: any) {
       console.error("Create category error:", err);
       const errorDetail =
@@ -193,6 +231,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   useEffect(() => {
     loadAll();
+
+    // Set up auto-refresh polling every 30 seconds
+    const refreshInterval = setInterval(() => {
+      fetchActivities();
+      fetchVoters();
+    }, 30000); // 30 seconds
+
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const handleCreateElection = async (e: React.FormEvent) => {
@@ -231,6 +277,30 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       setSubmitting(true);
       await endElection();
       toast.success("Election ended successfully!");
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handlePause = async () => {
+    try {
+      setSubmitting(true);
+      await pauseSystem();
+      await loadAll();
+    } catch (err: any) {
+      toast.error(parseBlockchainError(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleUnpause = async () => {
+    try {
+      setSubmitting(true);
+      await unpauseSystem();
       await loadAll();
     } catch (err: any) {
       toast.error(parseBlockchainError(err));
@@ -278,9 +348,19 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       }
       // If already Ended (state=3) or None (state=0), just reset
 
+      // Step 1: Reset blockchain
+      toast.info("Resetting blockchain...");
       await resetSystem();
+      toast.success("✅ Blockchain reset complete!");
+
+      // Step 2: Reset database
+      toast.info("Resetting database...");
+      const { resetDatabase } = await import("../lib/api");
+      await resetDatabase();
+      toast.success("✅ Database reset complete!");
+
       toast.success(
-        "🔄 System reset successfully! You can now create a new election."
+        "System reset successfully! You can now create a new election."
       );
       await loadAll();
     } catch (err: any) {
@@ -506,13 +586,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   return (
     <AuthGuard requireAdmin={true} onNavigate={onNavigate}>
-      <div className="min-h-screen bg-gradient-to-b from-emerald-50 to-white">
+      <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
         {/* Header */}
         <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
             <div className="flex items-center gap-2 w-48">
               <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-              <span className="text-slate-900">Admin</span>
+              <span className="text-slate-900">APU VOTE</span>
               <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs">
                 Admin
               </Badge>
@@ -520,31 +600,37 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             <nav className="hidden md:flex gap-6 flex-1 justify-center">
               <button
                 onClick={() => onNavigate("home")}
-                className="text-sm font-normal transition-colors hover:text-primary"
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
               >
                 Home
               </button>
               <button
                 onClick={() => onNavigate("vote")}
-                className="text-sm font-normal transition-colors hover:text-primary"
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
               >
                 Elections
               </button>
               <button
                 onClick={() => onNavigate("results")}
-                className="text-sm font-normal transition-colors hover:text-primary"
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
               >
                 Results
               </button>
               <button
+                onClick={() => onNavigate("my-votes")}
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                My Votes
+              </button>
+              <button
                 onClick={() => onNavigate("about")}
-                className="text-sm font-normal transition-colors hover:text-primary"
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
               >
                 About
               </button>
               <button
                 onClick={() => onNavigate("contact")}
-                className="text-sm font-normal transition-colors hover:text-primary"
+                className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
               >
                 Contact
               </button>
@@ -586,7 +672,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle>Registered Voters</CardTitle>
+                  <CardTitle className="text-lg font-semibold">
+                    Registered Voters
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-baseline justify-between">
@@ -597,22 +685,19 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       of {adminData.totalVoters} eligible
                     </div>
                   </div>
-                  <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
-                    <div
-                      className="h-full rounded-full bg-emerald-500"
-                      style={{
-                        width: `${
-                          (adminData.registeredVoters / adminData.totalVoters) *
-                          100
-                        }%`,
-                      }}
-                    ></div>
-                  </div>
+                  <Progress
+                    value={
+                      (adminData.registeredVoters / adminData.totalVoters) * 100
+                    }
+                    className="mt-2 bg-slate-200"
+                  />
                 </CardContent>
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle>Votes Cast</CardTitle>
+                  <CardTitle className="text-lg font-semibold">
+                    Votes Cast
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   {(() => {
@@ -641,17 +726,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           {numberOfCategories}{" "}
                           {numberOfCategories === 1 ? "category" : "categories"}
                         </div>
-                        <div className="mt-2 h-2 w-full rounded-full bg-slate-200">
-                          <div
-                            className="h-full rounded-full bg-emerald-500"
-                            style={{
-                              width: `${Math.min(
-                                completionPercentage,
-                                100
-                              ).toFixed(1)}%`,
-                            }}
-                          />
-                        </div>
+                        <Progress
+                          value={Math.min(completionPercentage, 100)}
+                          className="mt-2 bg-slate-200"
+                        />
                       </>
                     );
                   })()}
@@ -659,12 +737,19 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               </Card>
               <Card>
                 <CardHeader className="pb-2">
-                  <CardTitle>Election Status</CardTitle>
+                  <CardTitle className="text-lg font-semibold">
+                    Election Status
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center justify-between">
-                    <div className="text-slate-900">
+                    <div className="text-slate-900 flex items-center gap-2">
                       {adminData.electionStatus}
+                      {election?.isPaused && (
+                        <Badge variant="destructive" className="animate-pulse">
+                          PAUSED
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center">
                       {adminData.electionStatus === "Active" ? (
@@ -678,12 +763,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       )}
                     </div>
                   </div>
-                  <div className="mt-4 flex gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     <Button
                       size="sm"
                       onClick={handleStartElection}
                       disabled={submitting}
-                      className="bg-emerald-600 hover:bg-emerald-700"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-xs px-3"
                     >
                       Start Election
                     </Button>
@@ -696,8 +781,20 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           adminData.electionStatus !== "Setup Phase") ||
                         submitting
                       }
+                      className="text-xs px-3"
                     >
                       End Election
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={election?.isPaused ? "default" : "destructive"}
+                      onClick={election?.isPaused ? handleUnpause : handlePause}
+                      disabled={
+                        submitting || adminData.electionStatus === "Not Started"
+                      }
+                      className="text-xs px-3"
+                    >
+                      {election?.isPaused ? "Unpause" : "Emergency Stop"}
                     </Button>
                   </div>
                 </CardContent>
@@ -981,31 +1078,49 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {adminData.voters.map((voter) => (
-                          <TableRow key={voter.id}>
-                            <TableCell className="text-slate-900">
-                              {voter.studentId}
-                            </TableCell>
-                            <TableCell className="font-mono text-slate-600">
-                              {voter.walletAddress.substring(0, 10)}...
-                            </TableCell>
-                            <TableCell className="text-slate-600">
-                              {voter.department}
-                            </TableCell>
-                            <TableCell className="text-slate-600">
-                              {new Date(
-                                voter.registrationDate
-                              ).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell>
-                              {voter.hasVoted ? (
-                                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                              ) : (
-                                <div className="h-4 w-4 rounded-full border border-slate-400" />
-                              )}
+                        {adminData.voters.length === 0 ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={5}
+                              className="text-center py-8 text-slate-500"
+                            >
+                              No registered voters yet
                             </TableCell>
                           </TableRow>
-                        ))}
+                        ) : (
+                          adminData.voters.map((voter) => (
+                            <TableRow key={voter.id}>
+                              <TableCell className="text-slate-900 font-mono">
+                                {/* Mask Student ID: TP123456 → TP123*** */}
+                                {voter.studentId.substring(
+                                  0,
+                                  voter.studentId.length - 3
+                                )}
+                                ***
+                              </TableCell>
+                              <TableCell className="font-mono text-slate-600">
+                                {/* Mask Wallet Address: 0x1234567890abcdef → 0x123456...cdef */}
+                                {voter.walletAddress.substring(0, 8)}...
+                                {voter.walletAddress.slice(-4)}
+                              </TableCell>
+                              <TableCell className="text-slate-600">
+                                {voter.department}
+                              </TableCell>
+                              <TableCell className="text-slate-600">
+                                {new Date(
+                                  voter.registrationDate
+                                ).toLocaleDateString()}
+                              </TableCell>
+                              <TableCell>
+                                {voter.hasVoted ? (
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                ) : (
+                                  <div className="h-4 w-4 rounded-full border border-slate-400" />
+                                )}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
                       </TableBody>
                     </Table>
                   </CardContent>
@@ -1257,6 +1372,35 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             </Tabs>
           </div>
         </div>
+
+        {/* Footer */}
+        <footer className="w-full border-t py-6 bg-white mt-auto">
+          <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
+            <div className="text-center text-sm text-slate-600 md:text-left">
+              © {new Date().getFullYear()} APU Vote Chain. All rights reserved.
+            </div>
+            <div className="flex gap-6">
+              <button
+                onClick={() => onNavigate("terms")}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                Terms
+              </button>
+              <button
+                onClick={() => onNavigate("privacy")}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                Privacy
+              </button>
+              <button
+                onClick={() => onNavigate("contact")}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                Contact
+              </button>
+            </div>
+          </div>
+        </footer>
       </div>
     </AuthGuard>
   );

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
+/**
+ * @title VotingSystem - Enhanced Blockchain-Based Voting System
+ * @dev Optimized for FYP with Auto-End, Batch Voting, and Vote Verification
+ */
 contract VotingSystem {
     enum ElectionState { None, Created, Active, Ended }
 
@@ -14,7 +18,7 @@ contract VotingSystem {
     }
 
     struct Category {
-        uint256 id;          // auto-generated: 1,2,3...
+        uint256 id;
         string name;
         string description;
         bool isActive;
@@ -22,7 +26,7 @@ contract VotingSystem {
     }
 
     struct Candidate {
-        uint256 id;          // sub-id within the category (1..n)
+        uint256 id;
         string name;
         string party;
         uint256 voteCount;
@@ -35,11 +39,25 @@ contract VotingSystem {
         string department;
         uint256 yearOfStudy;
         bool isRegistered;
-        mapping(uint256 => bool) votedInCategory; // categoryId => voted?
+        mapping(uint256 => bool) votedInCategory;
+    }
+
+    struct VoteChoice {
+        uint256 categoryId;
+        uint256 candidateId;
+    }
+
+    struct VoteReceipt {
+        uint256 categoryId;
+        string categoryName;
+        uint256 candidateId;
+        string candidateName;
+        uint256 timestamp;
     }
 
     address public admin;
     Election public currentElection;
+    bool public paused; 
 
     // voters
     mapping(address => Voter) private voters;
@@ -48,17 +66,21 @@ contract VotingSystem {
     // categories
     uint256 public categoryCount;
     mapping(uint256 => Category) private categories;
-    uint256[] private categoryIds; // list for iteration
+    uint256[] private categoryIds;
 
     // candidates (per category)
-    mapping(uint256 => uint256) private nextCandidateId; // categoryId => next candidate sub-id
-    mapping(uint256 => mapping(uint256 => Candidate)) private candidates; // categoryId => (candidateId => Candidate)
-    mapping(uint256 => uint256[]) private candidateIdsByCategory; // categoryId => list of candidate sub-ids
+    mapping(uint256 => uint256) private nextCandidateId;
+    mapping(uint256 => mapping(uint256 => Candidate)) private candidates;
+    mapping(uint256 => uint256[]) private candidateIdsByCategory;
+
+    // Vote receipts for verification
+    mapping(address => mapping(uint256 => VoteReceipt)) private voteReceipts;
 
     // ---------------- EVENTS ----------------
     event ElectionCreated(string title, uint256 startTime, uint256 endTime);
     event ElectionStarted(uint256 timestamp);
     event ElectionEnded(uint256 timestamp);
+    event ElectionAutoEnded(uint256 timestamp);
 
     event CategoryCreated(uint256 indexed categoryId, string name);
     event CategoryUpdated(uint256 indexed categoryId, string name, bool isActive);
@@ -69,12 +91,20 @@ contract VotingSystem {
 
     event VoterRegistered(address indexed voterAddress, string studentId);
     event VoteCast(address indexed voter, uint256 indexed categoryId, uint256 indexed candidateId);
+    event BatchVoteCast(address indexed voter, uint256 voteCount);
 
     event SystemReset(uint256 timestamp);
+    event Paused(address admin);
+    event Unpaused(address admin);
 
     // -------------- MODIFIERS --------------
     modifier onlyAdmin() {
         require(msg.sender == admin, "Only admin");
+        _;
+    }
+
+    modifier whenNotPaused() {
+        require(!paused, "System is paused");
         _;
     }
 
@@ -89,6 +119,7 @@ contract VotingSystem {
     }
 
     modifier electionActive() {
+        _checkAndUpdateElectionState();
         require(currentElection.state == ElectionState.Active, "Election not active");
         require(block.timestamp >= currentElection.startTime, "Not started");
         require(block.timestamp <= currentElection.endTime, "Ended");
@@ -113,19 +144,57 @@ contract VotingSystem {
 
     constructor() {
         admin = msg.sender;
-
-        // مبدئيًا مفيش Election
         currentElection.state = ElectionState.None;
+        paused = false;
+    }
+
+    // ============= EMERGENCY FUNCTIONS =============
+
+    function pause() external onlyAdmin {
+        require(!paused, "Already paused");
+        paused = true;
+        emit Paused(msg.sender);
+    }
+
+    function unpause() external onlyAdmin {
+        require(paused, "Not paused");
+        paused = false;
+        emit Unpaused(msg.sender);
+    }
+
+    // ============= AUTO-END FUNCTIONS =============
+
+    function _checkAndUpdateElectionState() internal {
+        if (currentElection.state == ElectionState.Active &&
+            block.timestamp > currentElection.endTime) {
+            currentElection.state = ElectionState.Ended;
+            emit ElectionAutoEnded(block.timestamp);
+        }
+    }
+
+    function getEffectiveState() public view returns (ElectionState) {
+        if (currentElection.state == ElectionState.Active &&
+            block.timestamp > currentElection.endTime) {
+            return ElectionState.Ended;
+        }
+        return currentElection.state;
+    }
+
+    function autoEndElection() external electionExists {
+        require(currentElection.state == ElectionState.Active, "Not active");
+        require(block.timestamp > currentElection.endTime, "Time not reached");
+        
+        currentElection.state = ElectionState.Ended;
+        emit ElectionAutoEnded(block.timestamp);
     }
 
     // ---------------- ELECTION ----------------
 
-    // تعمل Election واحدة فقط، بعد ما تعمل Reset
     function createElection(
         string memory title,
         uint256 startTime,
         uint256 endTime
-    ) external onlyAdmin {
+    ) external onlyAdmin whenNotPaused {
         require(currentElection.state == ElectionState.None, "Reset first");
         require(bytes(title).length > 0, "Title required");
         require(startTime < endTime, "Invalid time range");
@@ -143,27 +212,25 @@ contract VotingSystem {
         emit ElectionCreated(title, startTime, endTime);
     }
 
-    function startElection() external onlyAdmin electionExists {
+    function startElection() external onlyAdmin electionExists whenNotPaused {
         require(currentElection.state == ElectionState.Created, "Cannot start");
         currentElection.state = ElectionState.Active;
         emit ElectionStarted(block.timestamp);
     }
 
-    function endElection() external onlyAdmin electionExists {
+    function endElection() external onlyAdmin electionExists whenNotPaused {
         require(currentElection.state == ElectionState.Active, "Not active");
         currentElection.state = ElectionState.Ended;
         emit ElectionEnded(block.timestamp);
     }
 
-    // بعد ما الانتخابات تنتهي، الأدمن يعمل Reset يمسح كل حاجة ويبدأ من جديد
-    function resetSystem() external onlyAdmin electionExists {
+    function resetSystem() external onlyAdmin electionExists whenNotPaused {
         require(currentElection.state == ElectionState.Ended, "End election first");
 
         _resetAllCandidates();
         _resetAllCategories();
         _resetAllVoters();
 
-        // امسح بيانات الElection نفسها
         delete currentElection;
         currentElection.state = ElectionState.None;
 
@@ -180,6 +247,7 @@ contract VotingSystem {
         onlyAdmin
         electionExists
         electionInSetup
+        whenNotPaused
         returns (uint256 newCategoryId)
     {
         require(bytes(name).length > 0, "Category name required");
@@ -212,6 +280,7 @@ contract VotingSystem {
         electionExists
         electionInSetup
         categoryExists(categoryId)
+        whenNotPaused
     {
         Category storage c = categories[categoryId];
         c.name = name;
@@ -227,6 +296,7 @@ contract VotingSystem {
         electionExists
         electionInSetup
         categoryActive(categoryId)
+        whenNotPaused
     {
         categories[categoryId].isActive = false;
         emit CategoryDeactivated(categoryId);
@@ -247,7 +317,6 @@ contract VotingSystem {
         view
         returns (Category[] memory)
     {
-        // يرجّع الكاتيجوريز النشطة فقط
         uint256 activeCount = 0;
         for (uint256 i = 0; i < categoryIds.length; i++) {
             if (categories[categoryIds[i]].isActive) activeCount++;
@@ -266,7 +335,7 @@ contract VotingSystem {
         return arr;
     }
 
-    // ---------------- CANDIDATES (SUB-IDs per category) ----------------
+    // ---------------- CANDIDATES ----------------
 
     function addCandidate(
         uint256 categoryId,
@@ -278,6 +347,7 @@ contract VotingSystem {
         electionExists
         electionInSetup
         categoryActive(categoryId)
+        whenNotPaused
         returns (uint256 newCandidateId)
     {
         require(bytes(name).length > 0, "Name required");
@@ -304,6 +374,7 @@ contract VotingSystem {
         electionExists
         electionInSetup
         categoryExists(categoryId)
+        whenNotPaused
     {
         Candidate storage c = candidates[categoryId][candidateId];
         require(c.exists, "Candidate not found");
@@ -326,7 +397,6 @@ contract VotingSystem {
     {
         uint256[] memory raw = candidateIdsByCategory[categoryId];
 
-        // count active
         uint256 activeCount = 0;
         for (uint256 i = 0; i < raw.length; i++) {
             if (candidates[categoryId][raw[i]].isActive) activeCount++;
@@ -356,7 +426,7 @@ contract VotingSystem {
         string memory studentId,
         string memory department,
         uint256 yearOfStudy
-    ) external electionExists electionNotEnded {
+    ) external electionExists electionNotEnded whenNotPaused {
         Voter storage v = voters[msg.sender];
         require(!v.isRegistered, "Already registered");
 
@@ -371,12 +441,55 @@ contract VotingSystem {
         emit VoterRegistered(msg.sender, studentId);
     }
 
-    // vote: 1 per category
+    // ============= BATCH VOTING =============
+
+    function batchVote(VoteChoice[] memory votes)
+        external
+        electionExists
+        electionActive
+        whenNotPaused
+    {
+        Voter storage v = voters[msg.sender];
+        require(v.isRegistered, "Not registered");
+        require(votes.length > 0, "No votes provided");
+        require(votes.length <= categoryCount, "Too many votes");
+
+        for (uint256 i = 0; i < votes.length; i++) {
+            uint256 categoryId = votes[i].categoryId;
+            uint256 candidateId = votes[i].candidateId;
+
+            require(categories[categoryId].exists, "Category not found");
+            require(categories[categoryId].isActive, "Category inactive");
+            require(!v.votedInCategory[categoryId], "Already voted in category");
+
+            Candidate storage c = candidates[categoryId][candidateId];
+            require(c.exists, "Candidate not found");
+            require(c.isActive, "Candidate inactive");
+
+            v.votedInCategory[categoryId] = true;
+            c.voteCount++;
+            currentElection.totalVotes++;
+
+            voteReceipts[msg.sender][categoryId] = VoteReceipt({
+                categoryId: categoryId,
+                categoryName: categories[categoryId].name,
+                candidateId: candidateId,
+                candidateName: c.name,
+                timestamp: block.timestamp
+            });
+
+            emit VoteCast(msg.sender, categoryId, candidateId);
+        }
+
+        emit BatchVoteCast(msg.sender, votes.length);
+    }
+
     function vote(uint256 categoryId, uint256 candidateId)
         external
         electionExists
         electionActive
         categoryActive(categoryId)
+        whenNotPaused
     {
         Voter storage v = voters[msg.sender];
         require(v.isRegistered, "Not registered");
@@ -390,6 +503,14 @@ contract VotingSystem {
         c.voteCount++;
         currentElection.totalVotes++;
 
+        voteReceipts[msg.sender][categoryId] = VoteReceipt({
+            categoryId: categoryId,
+            categoryName: categories[categoryId].name,
+            candidateId: candidateId,
+            candidateName: c.name,
+            timestamp: block.timestamp
+        });
+
         emit VoteCast(msg.sender, categoryId, candidateId);
     }
 
@@ -399,6 +520,97 @@ contract VotingSystem {
         returns (bool)
     {
         return voters[voter].votedInCategory[categoryId];
+    }
+
+    // ============= ENHANCED GETTERS =============
+
+    function getVoterInfo(address voterAddress)
+        external
+        view
+        returns (
+            string memory studentId,
+            string memory department,
+            uint256 yearOfStudy,
+            bool isRegistered,
+            uint256 votedCategoriesCount
+        )
+    {
+        Voter storage v = voters[voterAddress];
+        
+        uint256 count = 0;
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            if (v.votedInCategory[categoryIds[i]]) count++;
+        }
+
+        return (
+            v.studentId,
+            v.department,
+            v.yearOfStudy,
+            v.isRegistered,
+            count
+        );
+    }
+
+    function getMyVotes()
+        external
+        view
+        returns (VoteReceipt[] memory)
+    {
+        Voter storage v = voters[msg.sender];
+        require(v.isRegistered, "Not registered");
+
+        uint256 count = 0;
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            if (v.votedInCategory[categoryIds[i]]) count++;
+        }
+
+        VoteReceipt[] memory receipts = new VoteReceipt[](count);
+        uint256 idx = 0;
+
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            uint256 catId = categoryIds[i];
+            if (v.votedInCategory[catId]) {
+                receipts[idx] = voteReceipts[msg.sender][catId];
+                idx++;
+            }
+        }
+
+        return receipts;
+    }
+
+    function getElectionSummary()
+        external
+        view
+        returns (
+            string memory title,
+            uint256 startTime,
+            uint256 endTime,
+            ElectionState state,
+            ElectionState effectiveState,
+            uint256 totalVoters,
+            uint256 totalVotes,
+            uint256 categoriesCount,
+            uint256 candidatesCount,
+            bool isPaused
+        )
+    {
+        uint256 totalCandidates = 0;
+        for (uint256 i = 0; i < categoryIds.length; i++) {
+            totalCandidates += candidateIdsByCategory[categoryIds[i]].length;
+        }
+
+        return (
+            currentElection.title,
+            currentElection.startTime,
+            currentElection.endTime,
+            currentElection.state,
+            getEffectiveState(),
+            currentElection.totalVoters,
+            currentElection.totalVotes,
+            categoryIds.length,
+            totalCandidates,
+            paused
+        );
     }
 
     // -------------- INTERNAL RESET --------------
@@ -430,7 +642,20 @@ contract VotingSystem {
     function _resetAllVoters() internal {
         for (uint256 i = 0; i < registeredVoters.length; i++) {
             address voterAddr = registeredVoters[i];
-            delete voters[voterAddr]; // ده بيمسح كمان votedInCategory mapping
+            
+            // CRITICAL FIX: Explicitly clear votedInCategory mapping for each category
+            // Solidity does NOT auto-clear nested mappings when deleting structs!
+            for (uint256 j = 0; j < categoryIds.length; j++) {
+                voters[voterAddr].votedInCategory[categoryIds[j]] = false;
+            }
+            
+            // Clear vote receipts
+            for (uint256 j = 0; j < categoryIds.length; j++) {
+                delete voteReceipts[voterAddr][categoryIds[j]];
+            }
+            
+            // Now safe to delete the voter struct
+            delete voters[voterAddr];
         }
 
         delete registeredVoters;

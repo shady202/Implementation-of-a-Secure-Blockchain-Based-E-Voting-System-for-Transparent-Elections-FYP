@@ -1,27 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Loader2,
   AlertCircle,
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Info,
 } from "lucide-react";
 
 import { Button } from "./ui/button";
-import { Card, CardContent, CardFooter } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 import { Label } from "./ui/label";
+import { Alert, AlertDescription, AlertTitle } from "./ui/alert";
 
 import {
   getElectionState,
   getAllCategories,
   getCandidatesForCategory,
-  castVote,
+  batchVote,
   isVoterRegistered,
 } from "../lib/blockchain";
+import { UserNav } from "./UserNav";
+import { isLoggedIn } from "../lib/session";
 
 const apuLogo = "/apu-logo.png";
 
@@ -40,7 +51,7 @@ interface Candidate {
 }
 
 interface VotePageProps {
-  onNavigate: (page: string) => void;
+  onNavigate: (page: string, txHash?: string) => void;
 }
 
 export function VotePage({ onNavigate }: VotePageProps) {
@@ -49,6 +60,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
   const [voted, setVoted] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [checkingRegistration, setCheckingRegistration] = useState(true);
+  const currentUser = isLoggedIn();
 
   const [electionActive, setElectionActive] = useState(false);
   const [electionEnded, setElectionEnded] = useState(false);
@@ -61,6 +73,50 @@ export function VotePage({ onNavigate }: VotePageProps) {
   const [selectedVotes, setSelectedVotes] = useState<Record<number, number>>(
     {}
   );
+  const [activeTab, setActiveTab] = useState("");
+  const [timeRemaining, setTimeRemaining] = useState("");
+  const [electionTitle, setElectionTitle] = useState("Election");
+
+  /* ================= SLIDING TAB INDICATOR ================= */
+
+  const tabsListRef = useRef<HTMLDivElement | null>(null);
+  const triggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [indicator, setIndicator] = useState({ left: 0, width: 0 });
+
+  useLayoutEffect(() => {
+    const listEl = tabsListRef.current;
+    const activeEl = triggerRefs.current[activeTab];
+
+    if (!listEl || !activeEl) return;
+
+    const listRect = listEl.getBoundingClientRect();
+    const activeRect = activeEl.getBoundingClientRect();
+
+    setIndicator({
+      left: activeRect.left - listRect.left,
+      width: activeRect.width,
+    });
+  }, [activeTab, categories.length]);
+
+  useEffect(() => {
+    const onResize = () => {
+      const listEl = tabsListRef.current;
+      const activeEl = triggerRefs.current[activeTab];
+
+      if (!listEl || !activeEl) return;
+
+      const listRect = listEl.getBoundingClientRect();
+      const activeRect = activeEl.getBoundingClientRect();
+
+      setIndicator({
+        left: activeRect.left - listRect.left,
+        width: activeRect.width,
+      });
+    };
+
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [activeTab]);
 
   /* ================= CHECK REGISTRATION ================= */
 
@@ -72,7 +128,6 @@ export function VotePage({ onNavigate }: VotePageProps) {
         setIsRegistered(registered);
 
         if (!registered) {
-          // Redirect to voter registration page
           onNavigate("voter-registration");
           return;
         }
@@ -90,40 +145,102 @@ export function VotePage({ onNavigate }: VotePageProps) {
   /* ================= LOAD DATA ================= */
 
   useEffect(() => {
-    // Only load data if registered
-    if (isRegistered !== true) return;
+    if (!isRegistered) return;
 
-    const load = async () => {
+    const loadData = async () => {
       try {
         setLoading(true);
 
-        const election = await getElectionState();
-        setElectionActive(election.isActive);
-        setElectionEnded(election.hasEnded);
+        const electionState = await getElectionState();
+        setElectionActive(electionState.isActive);
+        setElectionEnded(electionState.hasEnded);
 
-        const cats = await getAllCategories();
-        const activeCats = cats.filter((c: Category) => c.isActive);
-        setCategories(activeCats);
+        setElectionTitle(electionState.title || "Election");
 
-        const allCandidates: Record<number, Candidate[]> = {};
-
-        for (const cat of activeCats) {
-          const list = await getCandidatesForCategory(cat.id);
-          allCandidates[cat.id] = list;
+        if (electionState.isActive && electionState.endTime) {
+          const now = Math.floor(Date.now() / 1000);
+          const remaining = electionState.endTime - now;
+          if (remaining > 0) {
+            const days = Math.floor(remaining / 86400);
+            const hours = Math.floor((remaining % 86400) / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = remaining % 60;
+            setTimeRemaining(
+              `${days}d ${hours}h ${minutes}m ${seconds}s remaining`
+            );
+          } else {
+            setTimeRemaining("Election ending soon");
+          }
+        } else {
+          setTimeRemaining("");
         }
 
-        setCandidatesByCategory(allCandidates);
+        if (!electionState.isActive) {
+          setElectionActive(false);
+          setLoading(false);
+          return;
+        }
+
+        const cats = await getAllCategories();
+        setCategories(cats);
+
+        if (cats.length > 0) {
+          setActiveTab(cats[0].name);
+        }
+
+        const candidatesMap: Record<number, Candidate[]> = {};
+        for (const c of cats) {
+          const cands = await getCandidatesForCategory(c.id);
+          candidatesMap[c.id] = cands;
+        }
+
+        setCandidatesByCategory(candidatesMap);
       } catch (err) {
-        console.error("Failed to load voting data", err);
+        console.error("Failed to load election data", err);
       } finally {
         setLoading(false);
       }
     };
 
-    load();
+    loadData();
   }, [isRegistered]);
 
-  /* ================= SELECTION ================= */
+  /* ================= REAL-TIME COUNTDOWN ================= */
+
+  useEffect(() => {
+    if (!electionActive) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const electionState = await getElectionState();
+
+        if (electionState.isActive && electionState.endTime) {
+          const now = Math.floor(Date.now() / 1000);
+          const remaining = electionState.endTime - now;
+
+          if (remaining > 0) {
+            const days = Math.floor(remaining / 86400);
+            const hours = Math.floor((remaining % 86400) / 3600);
+            const minutes = Math.floor((remaining % 3600) / 60);
+            const seconds = remaining % 60;
+            setTimeRemaining(
+              `${days}d ${hours}h ${minutes}m ${seconds}s remaining`
+            );
+          } else {
+            setTimeRemaining("Election ending soon");
+            setElectionEnded(true);
+            clearInterval(timer);
+          }
+        }
+      } catch (err) {
+        console.error("Error updating countdown:", err);
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [electionActive]);
+
+  /* ================= HELPERS ================= */
 
   const handleSelect = (categoryId: number, candidateId: number) => {
     setSelectedVotes((prev) => ({
@@ -133,51 +250,65 @@ export function VotePage({ onNavigate }: VotePageProps) {
   };
 
   const isFormComplete = () => {
-    return categories.every((c) => selectedVotes[c.id]);
+    return categories.every((cat) => selectedVotes[cat.id]);
   };
-
-  /* ================= SUBMIT VOTE ================= */
 
   const handleVote = async () => {
     try {
       setSubmitting(true);
 
-      for (const category of categories) {
-        const candidateId = selectedVotes[category.id];
-        await castVote(category.id, candidateId);
-      }
+      const votes = categories.map((cat) => ({
+        categoryId: cat.id,
+        candidateId: selectedVotes[cat.id],
+      }));
 
-      setVoted(true);
+      const result = await batchVote(votes);
+
+      // Navigate to success page with transaction hash
+      onNavigate("vote-success", result.transactionHash);
     } catch (err: any) {
-      alert(err.message || "Failed to submit vote");
+      console.error("Failed to submit vote", err);
+      alert("Failed to submit vote: " + (err?.message || "Unknown error"));
     } finally {
       setSubmitting(false);
     }
   };
 
-  /* ================= UI STATES ================= */
+  const handleElectionsClick = () => {
+    if (!currentUser) {
+      localStorage.setItem("intendedDestination", "vote");
+      onNavigate("login");
+    } else {
+      onNavigate("vote");
+    }
+  };
 
-  if (loading) {
+  /* ================= LOADING/CHECKING STATES ================= */
+
+  if (checkingRegistration) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="h-12 w-12 animate-spin text-emerald-600 mb-4" />
+              <p className="text-slate-600">Checking registration...</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
 
-  if (electionEnded) {
+  if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="max-w-md w-full">
-          <CardContent className="py-12 text-center">
-            <AlertCircle className="h-14 w-14 text-red-600 mx-auto mb-4" />
-            <h2>Election Ended</h2>
-            <p className="text-slate-600 mt-2">
-              Voting is no longer available.
-            </p>
-            <Button className="mt-6" onClick={() => onNavigate("results")}>
-              View Results
-            </Button>
+      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8">
+              <Loader2 className="h-12 w-12 animate-spin text-emerald-500 mb-4" />
+              <p className="text-slate-600">Loading election data...</p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -186,15 +317,42 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
   if (!electionActive) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="max-w-md w-full">
-          <CardContent className="py-12 text-center">
-            <Clock className="h-14 w-14 text-amber-500 mx-auto mb-4" />
-            <h2>Election Not Started</h2>
-            <p className="text-slate-600 mt-2">Voting has not started yet.</p>
-            <Button className="mt-6" onClick={() => onNavigate("home")}>
-              Go Back
-            </Button>
+      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <AlertCircle className="h-12 w-12 text-amber-500 mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                No Active Election
+              </h3>
+              <p className="text-slate-600 mb-6">
+                There is currently no election running.
+              </p>
+              <Button onClick={() => onNavigate("home")}>Return Home</Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (electionEnded) {
+    return (
+      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Clock className="h-12 w-12 text-slate-500 mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Election Ended
+              </h3>
+              <p className="text-slate-600 mb-6">
+                The election has ended. Thank you for your participation.
+              </p>
+              <Button onClick={() => onNavigate("results")}>
+                View Results
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -203,17 +361,21 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
   if (voted) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="max-w-md w-full">
-          <CardContent className="py-12 text-center">
-            <CheckCircle2 className="h-14 w-14 text-emerald-600 mx-auto mb-4" />
-            <h2>Vote Submitted</h2>
-            <p className="text-slate-600 mt-2">
-              Your vote has been recorded on the blockchain.
-            </p>
-            <Button className="mt-6" onClick={() => onNavigate("results")}>
-              View Results
-            </Button>
+      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Vote Submitted!
+              </h3>
+              <p className="text-slate-600 mb-6">
+                Your vote has been successfully recorded on the blockchain.
+              </p>
+              <Button onClick={() => onNavigate("my-votes")}>
+                View My Votes
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -223,68 +385,276 @@ export function VotePage({ onNavigate }: VotePageProps) {
   /* ================= MAIN UI ================= */
 
   return (
-    <div className="container py-10 max-w-4xl mx-auto">
-      <Button variant="ghost" onClick={() => onNavigate("home")}>
-        <ArrowLeft className="h-4 w-4 mr-1" />
-        Back
-      </Button>
-
-      <div className="flex items-center gap-3 my-6">
-        <img src={apuLogo} className="h-10" />
-        <h1>Cast Your Vote</h1>
-      </div>
-
-      <Tabs defaultValue={String(categories[0]?.id)}>
-        <TabsList className="grid w-full grid-cols-3 mb-6">
-          {categories.map((c) => (
-            <TabsTrigger key={c.id} value={String(c.id)}>
-              {c.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-
-        {categories.map((cat) => (
-          <TabsContent key={cat.id} value={String(cat.id)}>
-            <RadioGroup
-              value={String(selectedVotes[cat.id] || "")}
-              onValueChange={(v) => handleSelect(cat.id, Number(v))}
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
+      {/* Header */}
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
+          <div className="flex items-center gap-2 w-48">
+            <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
+            <span className="font-semibold text-slate-900">Election</span>
+          </div>
+          <nav className="hidden md:flex gap-6 flex-1 justify-center">
+            <button
+              onClick={() => onNavigate("home")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
-              {candidatesByCategory[cat.id]?.map((cand) => (
-                <div
-                  key={cand.id}
-                  className="flex items-center space-x-3 border rounded p-4 mb-3"
+              Home
+            </button>
+            <button
+              onClick={handleElectionsClick}
+              className="text-sm font-normal text-primary"
+            >
+              Elections
+            </button>
+            <button
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              Results
+            </button>
+            <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
+              onClick={() => onNavigate("about")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              About
+            </button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              Contact
+            </button>
+          </nav>
+          <div className="flex items-center gap-3 w-48 justify-end">
+            {currentUser ? (
+              <UserNav onNavigate={onNavigate} />
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => onNavigate("register")}
+                  className="text-slate-900"
                 >
-                  <RadioGroupItem
-                    value={String(cand.id)}
-                    id={`cand-${cand.id}`}
-                  />
-                  <Label htmlFor={`cand-${cand.id}`} className="flex flex-col">
-                    <span>{cand.name}</span>
-                    <span className="text-slate-500 text-sm">{cand.party}</span>
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </TabsContent>
-        ))}
-      </Tabs>
+                  Register
+                </Button>
+                <Button
+                  onClick={() => onNavigate("login")}
+                  className="bg-slate-900 hover:bg-slate-800 text-white"
+                >
+                  Sign In
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
 
-      <CardFooter className="pt-6">
-        <Button
-          className="w-full"
-          disabled={!isFormComplete() || submitting}
-          onClick={handleVote}
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Submitting...
-            </>
-          ) : (
-            "Submit Vote"
-          )}
-        </Button>
-      </CardFooter>
+      <main className="flex-1">
+        <div className="container mx-auto max-w-7xl px-6 md:px-8 py-16 md:py-24">
+          <div className="max-w-4xl mx-auto">
+            <Button
+              variant="ghost"
+              onClick={() => onNavigate("home")}
+              className="mb-6 -ml-2 text-slate-700 hover:text-slate-900"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Home
+            </Button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <img src={apuLogo} alt="APU Logo" className="h-12 w-12" />
+              <h1 className="text-3xl font-bold text-slate-900">
+                Cast Your Vote
+              </h1>
+            </div>
+
+            <p className="text-slate-600 mb-6">
+              Select your preferred candidates for each category in the{" "}
+              {electionTitle}
+            </p>
+
+            <Alert className="mb-6 bg-blue-50 border-blue-200">
+              <Info className="h-4 w-4 text-blue-600" />
+              <AlertTitle className="text-slate-900 font-semibold">
+                Important Information
+              </AlertTitle>
+              <AlertDescription className="text-slate-600">
+                Your vote will be recorded on the Ethereum blockchain and cannot
+                be changed once submitted. Make sure to review your choices
+                before confirming.
+              </AlertDescription>
+            </Alert>
+
+            <Card className="border-2 shadow-lg">
+              <CardHeader className="border-b bg-white">
+                <CardTitle className="text-xl font-bold text-slate-900">
+                  {electionTitle}
+                </CardTitle>
+                {timeRemaining && (
+                  <CardDescription className="text-amber-600 font-medium">
+                    {timeRemaining}
+                  </CardDescription>
+                )}
+              </CardHeader>
+
+              <CardContent className="pt-6">
+                <Tabs
+                  value={activeTab}
+                  onValueChange={setActiveTab}
+                  className="w-full"
+                >
+                  <TabsList
+                    ref={tabsListRef}
+                    className="relative w-full mb-6 bg-slate-200 p-1 rounded-lg overflow-hidden grid grid-cols-3"
+                  >
+                    {/* Sliding white pill */}
+                    <div
+                      className="absolute top-1 bottom-1 rounded-md bg-white shadow-sm transition-all duration-300 ease-out"
+                      style={{
+                        left: indicator.left,
+                        width: indicator.width,
+                      }}
+                    />
+
+                    {categories.map((cat) => (
+                      <TabsTrigger
+                        key={cat.id}
+                        value={cat.name}
+                        ref={(node) => {
+                          triggerRefs.current[cat.name] = node;
+                        }}
+                        className="
+                        relative z-10 rounded-md transition-colors
+                        data-[state=active]:text-slate-900
+                        data-[state=inactive]:text-slate-500
+                        data-[state=inactive]:bg-transparent
+                      "
+                      >
+                        {cat.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+
+                  <p className="text-center text-slate-600 mb-6">
+                    Select your preferred candidate for each position below
+                  </p>
+
+                  {categories.map((cat) => (
+                    <TabsContent
+                      key={cat.id}
+                      value={cat.name}
+                      className="space-y-4"
+                    >
+                      <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                        {cat.name}
+                      </h3>
+                      <p className="text-sm text-slate-600 mb-4">
+                        Select one candidate for this position
+                      </p>
+
+                      <RadioGroup
+                        value={String(selectedVotes[cat.id] || "")}
+                        onValueChange={(v) => handleSelect(cat.id, Number(v))}
+                      >
+                        {candidatesByCategory[cat.id]?.map((cand) => (
+                          <div
+                            key={cand.id}
+                            className={`flex items-center space-x-3 rounded-lg border-2 p-4 transition-all cursor-pointer ${
+                              selectedVotes[cat.id] === cand.id
+                                ? "border-emerald-500 bg-emerald-50"
+                                : "border-gray-200 hover:border-gray-300 bg-white"
+                            }`}
+                          >
+                            <RadioGroupItem
+                              value={String(cand.id)}
+                              id={`cand-${cand.id}`}
+                              className="border-gray-300"
+                            />
+                            <Label
+                              htmlFor={`cand-${cand.id}`}
+                              className="flex flex-col cursor-pointer w-full"
+                            >
+                              <span className="font-medium text-slate-900">
+                                {cand.name}
+                              </span>
+                              <span className="text-sm text-slate-500">
+                                {cand.party}
+                              </span>
+                            </Label>
+                          </div>
+                        ))}
+                      </RadioGroup>
+                    </TabsContent>
+                  ))}
+                </Tabs>
+              </CardContent>
+
+              <CardFooter className="flex flex-col border-t pt-6 pb-6">
+                <Button
+                  className={`w-full h-12 text-base font-medium transition-colors rounded-lg ${
+                    !isFormComplete() || submitting
+                      ? "bg-slate-400 hover:bg-slate-400 cursor-not-allowed text-white"
+                      : "bg-slate-900 hover:bg-slate-800 text-white"
+                  }`}
+                  disabled={!isFormComplete() || submitting}
+                  onClick={handleVote}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : !isFormComplete() ? (
+                    "Please Select All Positions"
+                  ) : (
+                    "Submit Vote"
+                  )}
+                </Button>
+                <p className="text-xs text-slate-500 text-center mt-3">
+                  By submitting your vote, you confirm that you are eligible to
+                  vote in this election and that you are casting your vote of
+                  your own free will.
+                </p>
+              </CardFooter>
+            </Card>
+          </div>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="w-full border-t py-6 bg-white">
+        <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
+          <div className="text-center text-sm text-slate-600 md:text-left">
+            © {new Date().getFullYear()} APU Vote Chain. All rights reserved.
+          </div>
+          <div className="flex gap-6">
+            <button
+              onClick={() => onNavigate("terms")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Terms
+            </button>
+            <button
+              onClick={() => onNavigate("privacy")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Privacy
+            </button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Contact
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

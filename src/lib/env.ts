@@ -19,7 +19,7 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
 // Export environment variables as constants
 export const ENV = {
   // Blockchain Configuration
-  CONTRACT_ADDRESS: "0x7E7B7e71ae3D0b1E2E75701929E6885c7b5a4B91",
+  CONTRACT_ADDRESS: "0x50a7daAbE0ca9ec92B5f6687dBb28e060e3E317f",
 
   CHAIN_ID:
     typeof process !== "undefined"

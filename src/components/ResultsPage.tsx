@@ -164,18 +164,18 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">Election Results</span>
+            <span className="font-semibold text-slate-900">Results</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
               onClick={() => onNavigate("home")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Home
             </button>
             <button
               onClick={() => onNavigate("vote")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
@@ -186,14 +186,20 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
               Results
             </button>
             <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
               onClick={() => onNavigate("about")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               About
             </button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Contact
             </button>
@@ -289,12 +295,16 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
               onValueChange={setActiveCategory}
               className="w-full"
             >
-              <TabsList className="flex w-full mb-6 overflow-x-auto whitespace-nowrap gap-2 bg-slate-100 p-2 rounded-lg">
+              <TabsList className="w-full mb-6 bg-slate-200 p-1 rounded-lg grid grid-cols-3 shadow-sm">
                 {activeCategories.map((category) => (
                   <TabsTrigger
                     key={category.id}
                     value={category.name}
-                    className="flex-shrink-0 min-w-[120px] data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                    className="
+                      rounded-md transition-colors
+                      data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm
+                      data-[state=inactive]:text-slate-500 data-[state=inactive]:bg-transparent
+                    "
                   >
                     {category.name}
                   </TabsTrigger>

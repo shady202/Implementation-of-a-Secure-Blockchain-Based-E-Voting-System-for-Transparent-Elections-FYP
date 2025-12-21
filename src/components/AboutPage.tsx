@@ -36,9 +36,9 @@ export function AboutPage({ onNavigate }: AboutPageProps) {
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
-          <div className="flex items center gap-2 w-48">
+          <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">About</span>
+            <span className="font-semibold text-slate-900">About</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
@@ -49,20 +49,26 @@ export function AboutPage({ onNavigate }: AboutPageProps) {
             </button>
             <button
               onClick={() => onNavigate("vote")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
             <button
               onClick={() => onNavigate("results")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Results
+            </button>
+            <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
             </button>
             <button className="text-sm font-normal text-primary">About</button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Contact
             </button>

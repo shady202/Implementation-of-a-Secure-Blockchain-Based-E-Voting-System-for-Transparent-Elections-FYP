@@ -11656,7 +11656,7 @@ function Du({ className: t, value: s, ...a }) {
     ...a,
     children: e.jsx(Iu, {
       "data-slot": "progress-indicator",
-      className: "bg-primary h-full w-full flex-1 transition-all",
+      className: "bg-emerald-500 h-full w-full flex-1 transition-all",
       style: { transform: `translateX(-${100 - (s || 0)}%)` },
     }),
   });

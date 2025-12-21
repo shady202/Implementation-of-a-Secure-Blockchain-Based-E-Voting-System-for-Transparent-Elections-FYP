@@ -22,36 +22,42 @@ export function PrivacyPage({ onNavigate }: PrivacyPageProps) {
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">Privacy</span>
+            <span className="font-semibold text-slate-900">Privacy</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
               onClick={() => onNavigate("home")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Home
             </button>
             <button
               onClick={() => onNavigate("vote")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
             <button
               onClick={() => onNavigate("results")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Results
             </button>
             <button
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
               onClick={() => onNavigate("about")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               About
             </button>
             <button
               onClick={() => onNavigate("contact")}
-              className="text-sm font-normal transition-colors hover:text-primary"
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Contact
             </button>
