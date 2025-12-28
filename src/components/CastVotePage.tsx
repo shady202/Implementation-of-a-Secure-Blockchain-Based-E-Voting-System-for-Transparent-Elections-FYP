@@ -75,6 +75,44 @@ export function CastVotePage({ onNavigate }: CastVotePageProps) {
       try {
         setLoading(true);
 
+        // STEP 1: Check if wallet is registered in database
+        try {
+          const accounts = await (window as any).ethereum.request({
+            method: "eth_requestAccounts",
+          });
+          const walletAddress = accounts[0];
+
+          const checkResponse = await fetch(
+            "http://localhost:3001/api/voters/check-registration",
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ walletAddress }),
+            }
+          );
+
+          const checkData = await checkResponse.json();
+
+          if (!checkData.registered) {
+            toast.error(
+              "Wallet not registered! Please complete voter registration first."
+            );
+            setTimeout(() => onNavigate("voter-registration"), 2000);
+            return;
+          }
+
+          if (checkData.hasVoted) {
+            toast.error("You have already voted in this election!");
+            setTimeout(() => onNavigate("results"), 2000);
+            return;
+          }
+        } catch (walletErr) {
+          console.error("Wallet check failed:", walletErr);
+          toast.error("Please connect your MetaMask wallet first");
+          return;
+        }
+
+        // STEP 2: Load election data
         const election = await getElectionState();
         setElectionActive(election.isActive);
         setElectionEnded(election.hasEnded);
@@ -132,11 +170,29 @@ export function CastVotePage({ onNavigate }: CastVotePageProps) {
       setSubmitting(true);
       setShowConfirmation(false);
 
+      // Get wallet address
+      const accounts = await (window as any).ethereum.request({
+        method: "eth_requestAccounts",
+      });
+      const walletAddress = accounts[0];
+
       // Submit ONE tx per category
       for (const cat of categories) {
         const candId = selectedVotes[cat.id];
         if (!candId) continue;
         await castVote(cat.id, candId);
+      }
+
+      // Mark voter as voted in database
+      try {
+        await fetch("http://localhost:3001/api/voters/mark-voted", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress }),
+        });
+      } catch (err) {
+        console.error("Failed to mark voter as voted:", err);
+        // Don't fail the whole process if this fails
       }
 
       toast.success("All votes submitted!");
@@ -212,7 +268,7 @@ export function CastVotePage({ onNavigate }: CastVotePageProps) {
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">Cast Your Vote</span>
+            <span className="font-semibold text-slate-900">Cast Your Vote</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button

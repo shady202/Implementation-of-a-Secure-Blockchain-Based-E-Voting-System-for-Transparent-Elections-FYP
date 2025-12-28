@@ -123,7 +123,7 @@ export function HomePage({ onNavigate }: HomePageProps) {
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">APU VOTE</span>
+            <span className="font-semibold text-slate-900">APU VOTE</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
@@ -169,13 +169,14 @@ export function HomePage({ onNavigate }: HomePageProps) {
             ) : (
               <>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onNavigate("register")}
-                  className="text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
@@ -204,13 +205,23 @@ export function HomePage({ onNavigate }: HomePageProps) {
                   </p>
                 </div>
                 <div className="flex flex-col gap-3 min-[400px]:flex-row">
-                  <Button
-                    size="lg"
-                    className="bg-slate-900 hover:bg-slate-800 text-white px-8"
-                    onClick={() => onNavigate("register")}
-                  >
-                    Register to Vote
-                  </Button>
+                  {currentUser ? (
+                    <Button
+                      size="lg"
+                      className="bg-slate-900 hover:bg-slate-800 text-white px-8"
+                      onClick={handleElectionsClick}
+                    >
+                      Vote Now
+                    </Button>
+                  ) : (
+                    <Button
+                      size="lg"
+                      className="bg-slate-900 hover:bg-slate-800 text-white px-8"
+                      onClick={() => onNavigate("register")}
+                    >
+                      Register to Vote
+                    </Button>
+                  )}
                   <Button
                     size="lg"
                     variant="outline"

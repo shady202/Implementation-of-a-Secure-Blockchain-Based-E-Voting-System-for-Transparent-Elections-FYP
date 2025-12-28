@@ -227,9 +227,13 @@ contract VotingSystem {
     function resetSystem() external onlyAdmin electionExists whenNotPaused {
         require(currentElection.state == ElectionState.Ended, "End election first");
 
+        // ✅ CRITICAL FIX: Clear voter votes FIRST (while categoryIds still exists)
+        // This ensures votedInCategory mappings get properly cleared
+        _resetAllVoters();
+        
+        // Then clean up candidates and categories
         _resetAllCandidates();
         _resetAllCategories();
-        _resetAllVoters();
 
         delete currentElection;
         currentElection.state = ElectionState.None;

@@ -11,6 +11,8 @@ import candidatesRouter from "./routes/candidates";
 import statisticsRouter from "./routes/statistics";
 import resetRouter from "./routes/reset";
 import adminRouter from "./routes/admin";
+import authRouter from "./routes/auth";
+import votesRouter from "./routes/votes";
 
 // Load environment variables
 dotenv.config();
@@ -61,6 +63,8 @@ app.use("/api/candidates", candidatesRouter);
 app.use("/api/statistics", statisticsRouter);
 app.use("/api/reset", resetRouter);
 app.use("/api/admin", adminRouter);
+app.use("/api/auth", authRouter);
+app.use("/api/votes", votesRouter);
 
 // Legacy routes (for backward compatibility with frontend)
 app.get("/api/election-settings", electionsRouter);

@@ -10,7 +10,7 @@ import {
 } from "./ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { getCurrentUser, logout, isAdmin } from "../lib/auth";
-import { User, Settings, LogOut, Shield, Vote } from "lucide-react";
+import { User, Settings, LogOut, Shield, Vote, Receipt } from "lucide-react";
 
 interface UserNavProps {
   onNavigate: (page: string) => void;
@@ -75,29 +75,20 @@ export function UserNav({ onNavigate }: UserNavProps) {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => onNavigate("elections")}
+          onClick={() => onNavigate("vote")}
           className="cursor-pointer"
         >
           <Vote className="mr-2 h-4 w-4" />
           <span>Vote Now</span>
         </DropdownMenuItem>
         {!isAdmin() && (
-          <>
-            <DropdownMenuItem
-              onClick={() => onNavigate("voter")}
-              className="cursor-pointer"
-            >
-              <User className="mr-2 h-4 w-4" />
-              <span>Dashboard</span>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() => onNavigate("my-votes")}
-              className="cursor-pointer"
-            >
-              <Vote className="mr-2 h-4 w-4" />
-              <span>My Vote Receipts</span>
-            </DropdownMenuItem>
-          </>
+          <DropdownMenuItem
+            onClick={() => onNavigate("my-votes")}
+            className="cursor-pointer"
+          >
+            <Receipt className="mr-2 h-4 w-4" />
+            <span>My Vote Receipts</span>
+          </DropdownMenuItem>
         )}
         <DropdownMenuItem
           onClick={() => onNavigate("settings")}

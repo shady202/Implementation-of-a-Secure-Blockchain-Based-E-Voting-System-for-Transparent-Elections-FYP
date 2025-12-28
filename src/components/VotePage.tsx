@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ethers } from "ethers";
 import {
   Loader2,
   AlertCircle,
@@ -9,6 +10,7 @@ import {
   Clock,
   Info,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "./ui/button";
 import {
@@ -30,6 +32,7 @@ import {
   getCandidatesForCategory,
   batchVote,
   isVoterRegistered,
+  hasVotedInCategory,
 } from "../lib/blockchain";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
@@ -58,6 +61,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [voted, setVoted] = useState(false);
+  const [alreadyVoted, setAlreadyVoted] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [checkingRegistration, setCheckingRegistration] = useState(true);
   const currentUser = isLoggedIn();
@@ -123,6 +127,14 @@ export function VotePage({ onNavigate }: VotePageProps) {
   useEffect(() => {
     const checkRegistration = async () => {
       try {
+        // Check if user is logged in first
+        if (!currentUser) {
+          console.log("❌ Not logged in - redirecting to login");
+          localStorage.setItem("intendedDestination", "vote");
+          onNavigate("login");
+          return;
+        }
+
         setCheckingRegistration(true);
         const registered = await isVoterRegistered();
         setIsRegistered(registered);
@@ -195,6 +207,95 @@ export function VotePage({ onNavigate }: VotePageProps) {
         }
 
         setCandidatesByCategory(candidatesMap);
+
+        // HYBRID VOTE CHECK: Database (fast) + Blockchain (secure)
+        // New contract deployed with reset bug FIXED!
+        try {
+          const provider = new ethers.BrowserProvider((window as any).ethereum);
+          const signer = await provider.getSigner();
+          const walletAddress = await signer.getAddress();
+
+          console.log("🔍 HYBRID vote check for wallet:", walletAddress);
+
+          // ⚡ STEP 1: Check DATABASE (fast, election-specific)
+          let databaseSaysVoted = false;
+          try {
+            const dbResponse = await fetch(
+              "http://localhost:3001/api/voters/check-registration",
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ walletAddress }),
+              }
+            );
+            const dbData = await dbResponse.json();
+            databaseSaysVoted = dbData.registered && dbData.hasVoted;
+            console.log(
+              "💾 Database check:",
+              databaseSaysVoted ? "❌ VOTED" : "✅ Not voted"
+            );
+          } catch (dbErr) {
+            console.error("Database check failed:", dbErr);
+          }
+
+          // 🔒 STEP 2: Check BLOCKCHAIN (secure, permanent audit)
+          let blockchainSaysVoted = false;
+          try {
+            console.log(
+              "📋 Checking blockchain for categories:",
+              cats.map((c: Category) => ({ id: c.id, name: c.name }))
+            );
+
+            for (const cat of cats) {
+              const hasVoted = await hasVotedInCategory(walletAddress, cat.id);
+              if (hasVoted) {
+                blockchainSaysVoted = true;
+                console.log(
+                  "⛓️  Blockchain: VOTED in category",
+                  cat.name,
+                  "(ID:",
+                  cat.id,
+                  ")"
+                );
+                break;
+              }
+            }
+            console.log(
+              "⛓️  Blockchain check:",
+              blockchainSaysVoted ? "❌ VOTED" : "✅ Not voted"
+            );
+          } catch (bcErr) {
+            console.error("Blockchain check failed:", bcErr);
+          }
+
+          // ✅ FINAL DECISION: Block if EITHER says voted
+          if (databaseSaysVoted || blockchainSaysVoted) {
+            const detectedBy =
+              databaseSaysVoted && blockchainSaysVoted
+                ? "both database AND blockchain"
+                : databaseSaysVoted
+                ? "database"
+                : "blockchain";
+
+            console.warn(
+              "❌ ALREADY VOTED - Detected by:",
+              detectedBy,
+              "\n  Database:",
+              databaseSaysVoted ? "VOTED" : "Not voted",
+              "\n  Blockchain:",
+              blockchainSaysVoted ? "VOTED" : "Not voted"
+            );
+            setAlreadyVoted(true);
+          } else {
+            console.log(
+              "✅ ELIGIBLE TO VOTE - Both checks passed:\n  Database: Not voted\n  Blockchain: Not voted"
+            );
+            setAlreadyVoted(false);
+          }
+        } catch (err) {
+          console.error("❌ Failed to check voting status:", err);
+          setAlreadyVoted(true);
+        }
       } catch (err) {
         console.error("Failed to load election data", err);
       } finally {
@@ -264,6 +365,113 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
       const result = await batchVote(votes);
 
+      // Step 2: Save votes to database for LIFETIME history
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const walletAddress = await signer.getAddress();
+
+      try {
+        // Get current election ID from database (if exists)
+        const electionResponse = await fetch(
+          "http://localhost:3001/api/elections/current"
+        );
+        const electionData = await electionResponse.json();
+
+        // ALWAYS save vote history, even if no election!
+        const electionId = electionData.election?.id || null;
+        const electionTitle =
+          electionData.election?.title || "General Election";
+
+        console.log("💾 Saving vote history...", {
+          wallet: walletAddress,
+          electionId,
+          electionTitle,
+          votes: votes.length,
+        });
+
+        //Prepare vote data with category/candidate NAMES
+        const votesWithNames = categories.map((cat) => {
+          const candidateId = selectedVotes[cat.id];
+          const candidate = candidatesByCategory[cat.id]?.find(
+            (c: Candidate) => c.id === candidateId
+          );
+
+          return {
+            categoryId: cat.id,
+            categoryName: cat.name,
+            candidateId: candidateId,
+            candidateName: candidate?.name || `Candidate ${candidateId}`,
+            transactionHash: result.transactionHash,
+          };
+        });
+
+        // Save vote history (works with or without election)
+        const saveResponse = await fetch(
+          "http://localhost:3001/api/votes/save",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walletAddress,
+              electionId, // Can be null
+              votes: votesWithNames,
+            }),
+          }
+        );
+
+        const saveData = await saveResponse.json();
+
+        if (saveData.success) {
+          console.log(
+            "✅ Vote history saved to database:",
+            saveData.votesSaved,
+            "votes"
+          );
+        } else {
+          console.error("❌ Failed to save vote history:", saveData.error);
+        }
+      } catch (historyErr) {
+        console.error("❌ CRITICAL: Failed to save vote history:", historyErr);
+        // Continue anyway - blockchain vote succeeded
+      }
+
+      // Step 3: Mark voter as voted in DATABASE
+      try {
+        console.log(
+          "📞 Calling mark-voted endpoint for wallet:",
+          walletAddress
+        );
+
+        const markVotedResponse = await fetch(
+          "http://localhost:3001/api/voters/mark-voted",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ walletAddress }),
+          }
+        );
+
+        const markVotedData = await markVotedResponse.json();
+
+        if (markVotedResponse.ok && markVotedData.success) {
+          console.log("✅ Voter marked as voted in database successfully");
+        } else {
+          console.error(
+            "❌ Failed to mark voter as voted:",
+            markVotedData.error || "Unknown error"
+          );
+          console.error("Response status:", markVotedResponse.status);
+        }
+      } catch (markErr) {
+        console.error(
+          "❌ Network error while marking voter as voted:",
+          markErr
+        );
+      }
+
+      toast.success("All votes submitted successfully!");
       // Navigate to success page with transaction hash
       onNavigate("vote-success", result.transactionHash);
     } catch (err: any) {
@@ -287,30 +495,30 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
   if (checkingRegistration) {
     return (
-      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-emerald-600 mb-4" />
-              <p className="text-slate-600">Checking registration...</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-emerald-50 to-white py-10">
+        <div className="flex flex-col items-center justify-center space-y-6">
+          <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
+            <Loader2 className="h-16 w-16 animate-spin text-white" />
+          </div>
+          <p className="text-xl font-medium text-slate-700">
+            Checking registration...
+          </p>
+        </div>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-8">
-              <Loader2 className="h-12 w-12 animate-spin text-emerald-500 mb-4" />
-              <p className="text-slate-600">Loading election data...</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-emerald-50 to-white py-10">
+        <div className="flex flex-col items-center justify-center space-y-6">
+          <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
+            <Loader2 className="h-16 w-16 animate-spin text-white" />
+          </div>
+          <p className="text-xl font-medium text-slate-700">
+            Loading election data...
+          </p>
+        </div>
       </div>
     );
   }
@@ -359,25 +567,37 @@ export function VotePage({ onNavigate }: VotePageProps) {
     );
   }
 
-  if (voted) {
+  if (voted || alreadyVoted) {
     return (
-      <div className="container py-10 max-w-4xl mx-auto flex items-center justify-center min-h-screen">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <CheckCircle2 className="h-12 w-12 text-emerald-500 mb-4" />
-              <h3 className="text-lg font-semibold text-slate-900 mb-2">
-                Vote Submitted!
-              </h3>
-              <p className="text-slate-600 mb-6">
-                Your vote has been successfully recorded on the blockchain.
-              </p>
-              <Button onClick={() => onNavigate("my-votes")}>
-                View My Votes
-              </Button>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-emerald-50 to-white py-10">
+        <div className="w-full max-w-md">
+          <div className="flex flex-col items-center justify-center text-center space-y-6">
+            {/* Icon */}
+            <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
+              <CheckCircle2 className="h-16 w-16 text-white" />
             </div>
-          </CardContent>
-        </Card>
+
+            {/* Title */}
+            <h2 className="text-3xl font-bold text-slate-900">
+              {alreadyVoted ? "Already Voted!" : "Vote Submitted!"}
+            </h2>
+
+            {/* Description */}
+            <p className="text-lg text-slate-600 max-w-sm">
+              {alreadyVoted
+                ? "You have already cast your vote in this election. Your vote has been recorded on the blockchain."
+                : "Your vote has been successfully recorded on the blockchain."}
+            </p>
+
+            {/* Button */}
+            <Button
+              onClick={() => onNavigate("my-votes")}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-8 py-6 text-lg rounded-xl shadow-lg"
+            >
+              View My Votes
+            </Button>
+          </div>
+        </div>
       </div>
     );
   }
@@ -391,7 +611,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="font-semibold text-slate-900">Election</span>
+            <span className="font-semibold text-slate-900">Elections</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
@@ -437,13 +657,14 @@ export function VotePage({ onNavigate }: VotePageProps) {
             ) : (
               <>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onNavigate("register")}
-                  className="text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
@@ -516,10 +737,12 @@ export function VotePage({ onNavigate }: VotePageProps) {
                     {/* Sliding white pill */}
                     <div
                       className="absolute top-1 bottom-1 rounded-md bg-white shadow-sm transition-all duration-300 ease-out"
-                      style={{
-                        left: indicator.left,
-                        width: indicator.width,
-                      }}
+                      style={
+                        {
+                          "--indicator-left": `${indicator.left}px`,
+                          "--indicator-width": `${indicator.width}px`,
+                        } as React.CSSProperties
+                      }
                     />
 
                     {categories.map((cat) => (

@@ -33,8 +33,9 @@ import {
 } from "../lib/blockchain";
 import { NETWORKS } from "../lib/networks";
 import { toast } from "sonner";
+import { parseBlockchainError } from "../lib/errorParser";
 import { UserNav } from "./UserNav";
-import { isLoggedIn } from "../lib/session";
+import { isLoggedIn, getCurrentUser } from "../lib/session";
 import {
   registerVoter as registerVoterAPI,
   checkVoterRegistration,
@@ -65,7 +66,32 @@ export function VoterRegistrationPage({
 
   const currentUser = isLoggedIn();
 
+  // Map faculty codes to full names
+  const facultyMap: Record<string, string> = {
+    computing: "School of Computing",
+    engineering: "School of Engineering",
+    business: "School of Business",
+    media: "School of Media & Design",
+    science: "School of Science",
+  };
+
   useEffect(() => {
+    // Auto-fill Student ID and Faculty from logged-in user data
+    const userData = getCurrentUser();
+    console.log("VoterRegistration - User Data:", userData); // DEBUG
+    if (userData) {
+      // Convert faculty code to full name if needed
+      const facultyCode = userData.department || "";
+      const facultyFullName =
+        facultyMap[facultyCode.toLowerCase()] || facultyCode;
+
+      setFormData((prev) => ({
+        ...prev,
+        studentId: userData.studentId || "",
+        department: facultyFullName,
+      }));
+    }
+
     checkWalletConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -204,7 +230,7 @@ export function VoterRegistrationPage({
 
       if (apiResponse?.success) {
         setRegistered(true);
-        toast.success("✅ Registration completed successfully!");
+        toast.success("Registration completed successfully!");
         localStorage.setItem("voterRegistrationCompleted", "true");
         onRegistrationComplete?.();
       } else {
@@ -216,8 +242,21 @@ export function VoterRegistrationPage({
       }
     } catch (error: any) {
       console.error("Registration error:", error);
-      setError(error?.message || "Failed to register voter. Please try again.");
-      toast.error(error?.message || "Failed to register voter");
+
+      // Check if error is about already being registered
+      const errorMessage = error?.message || error?.toString() || "";
+      const isAlreadyRegistered =
+        errorMessage.toLowerCase().includes("already registered") ||
+        errorMessage.toLowerCase().includes("already voted");
+
+      if (isAlreadyRegistered) {
+        setError("You already voted!");
+        toast.error("You already voted!");
+      } else {
+        const cleanError = parseBlockchainError(error);
+        setError(cleanError);
+        toast.error(cleanError);
+      }
     } finally {
       setLoading(false);
     }
@@ -229,7 +268,7 @@ export function VoterRegistrationPage({
         <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
           <div className="flex items-center gap-2 w-48">
             <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-            <span className="text-slate-900">APU VOTE</span>
+            <span className="font-semibold text-slate-900">APU VOTE</span>
           </div>
           <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
@@ -442,42 +481,26 @@ export function VoterRegistrationPage({
                       }
                       maxLength={8}
                       required
+                      disabled
+                      className="bg-slate-100 cursor-not-allowed"
                     />
-                    <p className="text-xs text-slate-500">
-                      Format: TP followed by 6 digits (e.g., TP123456)
+                    <p className="text-xs text-emerald-600">
+                      ✓ Auto-filled from your account
                     </p>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="department">Faculty</Label>
-                    <Select
+                    <Input
+                      id="department"
                       value={formData.department}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, department: value }))
-                      }
-                      required
-                    >
-                      <SelectTrigger id="department">
-                        <SelectValue placeholder="Select your faculty" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="School of Computing">
-                          School of Computing
-                        </SelectItem>
-                        <SelectItem value="School of Engineering">
-                          School of Engineering
-                        </SelectItem>
-                        <SelectItem value="School of Business">
-                          School of Business
-                        </SelectItem>
-                        <SelectItem value="School of Media & Design">
-                          School of Media & Design
-                        </SelectItem>
-                        <SelectItem value="School of Science">
-                          School of Science
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
+                      readOnly
+                      disabled
+                      className="bg-slate-100 cursor-not-allowed"
+                    />
+                    <p className="text-xs text-emerald-600">
+                      ✓ Auto-filled from your account
+                    </p>
                   </div>
 
                   <div className="space-y-2">

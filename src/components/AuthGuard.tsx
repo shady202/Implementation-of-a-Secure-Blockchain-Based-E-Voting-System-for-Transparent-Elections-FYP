@@ -1,7 +1,13 @@
 import { useEffect, useState, ReactNode } from "react";
 import { getCurrentUser, isAdmin } from "../lib/auth";
 import { Loader2, Lock } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Button } from "./ui/button";
 const apuLogo = "/apu-logo.png";
 
@@ -11,7 +17,11 @@ interface AuthGuardProps {
   onNavigate: (page: string) => void;
 }
 
-export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGuardProps) {
+export function AuthGuard({
+  children,
+  requireAdmin = false,
+  onNavigate,
+}: AuthGuardProps) {
   const [loading, setLoading] = useState(true);
   const [authorized, setAuthorized] = useState(false);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
@@ -27,7 +37,7 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
       }
 
       if (requireAdmin && !isAdmin()) {
-        onNavigate('home');
+        onNavigate("home");
         return;
       }
 
@@ -60,28 +70,36 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
               </div>
             </div>
             <div className="flex items-center gap-3 justify-center mb-4">
-              <img src={apuLogo} alt="Asia Pacific University Logo" className="h-10 w-auto" />
+              <img
+                src={apuLogo}
+                alt="Asia Pacific University Logo"
+                className="h-10 w-auto"
+              />
               <CardTitle>Authentication Required</CardTitle>
             </div>
             <CardDescription>
-              You need to sign in to your account to access the voting system and participate in elections.
+              You need to sign in to your account to access the voting system
+              and participate in elections.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="text-center space-y-4">
               <p className="text-sm text-slate-600">
-                To ensure election security and prevent unauthorized voting, all users must be authenticated.
+                To ensure election security and prevent unauthorized voting, all
+                users must be authenticated.
               </p>
 
               {/* Social Login Options */}
               <div className="space-y-3">
-                <p className="text-xs text-slate-600">Quick sign in with your university account:</p>
+                <p className="text-xs text-slate-600">
+                  Quick sign in with your university account:
+                </p>
 
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant="outline"
                     className="w-full h-10 text-xs bg-transparent"
-                    onClick={() => onNavigate('login')}
+                    onClick={() => onNavigate("login")}
                   >
                     <svg className="mr-1 h-3 w-3" viewBox="0 0 24 24">
                       <path
@@ -107,7 +125,7 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
                   <Button
                     variant="outline"
                     className="w-full h-10 text-xs bg-transparent"
-                    onClick={() => onNavigate('login')}
+                    onClick={() => onNavigate("login")}
                   >
                     <svg className="mr-1 h-3 w-3" viewBox="0 0 24 24">
                       <path fill="#F25022" d="M1 1h10v10H1z" />
@@ -124,7 +142,7 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
                 <Button
                   className="w-full"
                   size="lg"
-                  onClick={() => onNavigate('login')}
+                  onClick={() => onNavigate("login")}
                 >
                   Sign In to Your Account
                 </Button>
@@ -132,7 +150,7 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
                   variant="outline"
                   className="w-full bg-transparent"
                   size="lg"
-                  onClick={() => onNavigate('register')}
+                  onClick={() => onNavigate("register")}
                 >
                   Create New Account
                 </Button>
@@ -141,7 +159,7 @@ export function AuthGuard({ children, requireAdmin = false, onNavigate }: AuthGu
                 <p className="text-xs text-slate-600">
                   Don't have an account yet?{" "}
                   <button
-                    onClick={() => onNavigate('register')}
+                    onClick={() => onNavigate("register")}
                     className="text-emerald-600 hover:underline"
                   >
                     Register here

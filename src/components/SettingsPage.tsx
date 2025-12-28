@@ -1,14 +1,27 @@
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 import { Switch } from "./ui/switch";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Separator } from "./ui/separator";
 import { Alert, AlertDescription } from "./ui/alert";
+import { Badge } from "./ui/badge";
 import {
   User,
   Wallet,
@@ -22,7 +35,12 @@ import {
   Mail,
   Phone,
   Lock,
-  Globe
+  Globe,
+  Vote,
+  Clock,
+  Award,
+  TrendingUp,
+  Calendar,
 } from "lucide-react";
 import { UserNav } from "./UserNav";
 import { getCurrentUser, updateUserProfile } from "../lib/auth";
@@ -35,11 +53,27 @@ interface SettingsPageProps {
   onNavigate: (page: string) => void;
 }
 
+interface VotingHistory {
+  id: string;
+  electionTitle: string;
+  date: string;
+  status: string;
+  transactionHash: string;
+}
+
 export function SettingsPage({ onNavigate }: SettingsPageProps) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [user, setUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
+  const [votingHistory, setVotingHistory] = useState<VotingHistory[]>([]);
+
+  const [stats, setStats] = useState({
+    totalElections: 0,
+    participated: 0,
+    upcoming: 0,
+    walletConnected: false,
+  });
 
   const [profileData, setProfileData] = useState({
     firstName: "",
@@ -67,29 +101,48 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
   const currentUser = isLoggedIn();
 
+  // Faculty mapping (same as VoterRegistrationPage)
+  const facultyMap: Record<string, string> = {
+    computing: "School of Computing",
+    engineering: "School of Engineering",
+    business: "Accounting, Finance, & Quantitative Studies",
+    accounting: "Accounting, Finance, & Quantitative Studies",
+    foundation: "Foundation Studies",
+  };
+
   useEffect(() => {
     // Check if user is authenticated
     if (!currentUser) {
-      onNavigate('login');
+      onNavigate("login");
       return;
     }
 
     // Load user data
     loadUserData();
     checkWalletConnection();
+
+    // Voting history will be fetched from database/blockchain
+    // For now, leave empty - no mock data
+    setVotingHistory([]);
   }, [currentUser, onNavigate]);
 
   const loadUserData = () => {
     const userData = getCurrentUser();
     if (userData) {
       setUser(userData);
+
+      // Map faculty code to full name
+      const facultyCode = userData.department || "";
+      const facultyFullName =
+        facultyMap[facultyCode.toLowerCase()] || facultyCode;
+
       setProfileData({
         firstName: userData.firstName || "",
         lastName: userData.lastName || "",
         email: userData.email || "",
         phone: userData.phone || "",
         studentId: userData.studentId || "",
-        department: userData.department || "",
+        department: facultyFullName,
         yearOfStudy: userData.yearOfStudy || "",
         program: userData.program || "",
       });
@@ -99,9 +152,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const checkWalletConnection = async () => {
     if (typeof window.ethereum !== "undefined") {
       try {
-        const accounts = await window.ethereum.request({ method: "eth_accounts" });
+        const accounts = await window.ethereum.request({
+          method: "eth_accounts",
+        });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
+          setStats((prev) => ({ ...prev, walletConnected: true }));
         }
       } catch (err) {
         console.error("Error checking wallet connection:", err);
@@ -122,6 +178,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
       if (accounts.length > 0) {
         setWalletAddress(accounts[0]);
+        setStats((prev) => ({ ...prev, walletConnected: true }));
         toast.success("Wallet connected successfully!");
       }
     } catch (error: any) {
@@ -134,7 +191,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     setSaving(true);
     try {
       // Simulate saving to backend/blockchain
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
       // Update local storage
       const updatedUser = { ...user, ...profileData };
@@ -153,7 +210,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const handleSaveNotifications = async () => {
     setSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Notification preferences saved!");
     } catch (error) {
       toast.error("Failed to save preferences");
@@ -165,7 +222,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const handleSaveSecurity = async () => {
     setSaving(true);
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Security settings updated!");
     } catch (error) {
       toast.error("Failed to update security settings");
@@ -175,55 +232,71 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   };
 
   const getInitials = () => {
-    return `${profileData.firstName?.[0] || ""}${profileData.lastName?.[0] || ""}`.toUpperCase();
+    return `${profileData.firstName?.[0] || ""}${
+      profileData.lastName?.[0] || ""
+    }`.toUpperCase();
   };
 
   return (
-    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50/30 to-white">
+    <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
       {/* Header */}
-      <header className="sticky top-0 z-50 w-full border-b bg-white/80 backdrop-blur-sm">
-        <div className="container mx-auto max-w-7xl flex h-16 items-center justify-between px-6 md:px-8">
-          <div className="flex items-center gap-3">
-            <img src={apuLogo} alt="APU Logo" className="h-10 w-auto" />
-            <span className="text-slate-900">APU VOTE</span>
+      <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+        <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
+          <div className="flex items-center gap-2 w-48">
+            <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
+            <span className="font-semibold text-slate-900">APU VOTE</span>
           </div>
-          <nav className="hidden md:flex gap-8">
+          <nav className="hidden md:flex gap-6 flex-1 justify-center">
             <button
-              onClick={() => onNavigate('home')}
-              className="text-sm transition-colors hover:text-slate-900 text-slate-600"
+              onClick={() => onNavigate("home")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Home
             </button>
             <button
-              onClick={() => onNavigate('vote')}
-              className="text-sm transition-colors hover:text-slate-900 text-slate-600"
+              onClick={() => onNavigate("vote")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Elections
             </button>
             <button
-              onClick={() => onNavigate('results')}
-              className="text-sm transition-colors hover:text-slate-900 text-slate-600"
+              onClick={() => onNavigate("results")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               Results
             </button>
             <button
-              onClick={() => onNavigate('about')}
-              className="text-sm transition-colors hover:text-slate-900 text-slate-600"
+              onClick={() => onNavigate("my-votes")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
+            >
+              My Votes
+            </button>
+            <button
+              onClick={() => onNavigate("about")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
               About
             </button>
-          </nav>
-          {currentUser ? (
-            <UserNav onNavigate={onNavigate} />
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onNavigate('login')}
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm font-normal text-slate-600 hover:text-slate-900 transition-colors"
             >
-              Sign In
-            </Button>
-          )}
+              Contact
+            </button>
+          </nav>
+          <div className="flex items-center gap-3 w-48 justify-end">
+            {currentUser ? (
+              <UserNav onNavigate={onNavigate} />
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onNavigate("login")}
+              >
+                Sign In
+              </Button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -234,31 +307,116 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-2">
               <User className="h-8 w-8 text-emerald-600" />
-              <h1 className="text-slate-900">Account Settings</h1>
+              <h1 className="text-3xl font-bold text-slate-900">
+                Account Settings
+              </h1>
             </div>
             <p className="text-slate-600">
-              Manage your profile information, security settings, and preferences
+              Welcome back, {user?.firstName}! Manage your profile, view your
+              voting activity, and customize your preferences.
             </p>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="grid gap-6 md:grid-cols-4 mb-8">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Total Elections
+                </CardTitle>
+                <Vote className="h-4 w-4 text-slate-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-slate-900">
+                  {stats.totalElections}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">Available to vote</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Participated
+                </CardTitle>
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-slate-900">
+                  {stats.participated}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Votes cast successfully
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
+                <Clock className="h-4 w-4 text-blue-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-slate-900">
+                  {stats.upcoming}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  Elections coming soon
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">
+                  Wallet Status
+                </CardTitle>
+                <Wallet className="h-4 w-4 text-purple-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold text-slate-900">
+                  {stats.walletConnected ? (
+                    <CheckCircle2 className="h-6 w-6 text-emerald-600" />
+                  ) : (
+                    <span>-</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1">
+                  {stats.walletConnected ? "Connected" : "Not connected"}
+                </p>
+              </CardContent>
+            </Card>
           </div>
 
           {/* Settings Tabs */}
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-8">
-              <TabsTrigger value="profile">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8 h-auto">
+              <TabsTrigger value="profile" className="py-3">
                 <User className="h-4 w-4 mr-2" />
-                Profile
+                <span className="hidden sm:inline">Profile</span>
+                <span className="sm:hidden">Profile</span>
               </TabsTrigger>
-              <TabsTrigger value="wallet">
+              <TabsTrigger value="history" className="py-3">
+                <Vote className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Voting History</span>
+                <span className="sm:hidden">History</span>
+              </TabsTrigger>
+              <TabsTrigger value="wallet" className="py-3">
                 <Wallet className="h-4 w-4 mr-2" />
-                Wallet & Security
+                <span className="hidden sm:inline">Wallet & Security</span>
+                <span className="sm:hidden">Wallet</span>
               </TabsTrigger>
-              <TabsTrigger value="notifications">
+              <TabsTrigger value="notifications" className="py-3">
                 <Bell className="h-4 w-4 mr-2" />
-                Notifications
+                <span className="hidden sm:inline">Notifications</span>
+                <span className="sm:hidden">Alerts</span>
               </TabsTrigger>
-              <TabsTrigger value="preferences">
+              <TabsTrigger value="preferences" className="py-3">
                 <Globe className="h-4 w-4 mr-2" />
-                Preferences
+                <span className="hidden sm:inline">Preferences</span>
+                <span className="sm:hidden">Settings</span>
+              </TabsTrigger>
+              <TabsTrigger value="achievements" className="py-3">
+                <Award className="h-4 w-4 mr-2" />
+                <span className="hidden sm:inline">Achievements</span>
+                <span className="sm:hidden">Badges</span>
               </TabsTrigger>
             </TabsList>
 
@@ -303,7 +461,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Input
                           id="firstName"
                           value={profileData.firstName}
-                          onChange={(e) => setProfileData({ ...profileData, firstName: e.target.value })}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              firstName: e.target.value,
+                            })
+                          }
                           placeholder="Enter your first name"
                         />
                       </div>
@@ -312,18 +475,30 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Input
                           id="lastName"
                           value={profileData.lastName}
-                          onChange={(e) => setProfileData({ ...profileData, lastName: e.target.value })}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              lastName: e.target.value,
+                            })
+                          }
                           placeholder="Enter your last name"
                         />
                       </div>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="studentId">TP Number / Student ID *</Label>
+                      <Label htmlFor="studentId">
+                        TP Number / Student ID *
+                      </Label>
                       <Input
                         id="studentId"
                         value={profileData.studentId}
-                        onChange={(e) => setProfileData({ ...profileData, studentId: e.target.value })}
+                        onChange={(e) =>
+                          setProfileData({
+                            ...profileData,
+                            studentId: e.target.value,
+                          })
+                        }
                         placeholder="e.g., TP12345"
                       />
                     </div>
@@ -337,7 +512,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                             id="email"
                             type="email"
                             value={profileData.email}
-                            onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                            onChange={(e) =>
+                              setProfileData({
+                                ...profileData,
+                                email: e.target.value,
+                              })
+                            }
                             placeholder="your.email@student.apu.edu.my"
                             className="pl-10"
                           />
@@ -351,7 +531,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                             id="phone"
                             type="tel"
                             value={profileData.phone}
-                            onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                            onChange={(e) =>
+                              setProfileData({
+                                ...profileData,
+                                phone: e.target.value,
+                              })
+                            }
                             placeholder="+60 12-345 6789"
                             className="pl-10"
                           />
@@ -370,17 +555,29 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Label htmlFor="department">Department / Faculty *</Label>
                       <Select
                         value={profileData.department}
-                        onValueChange={(value) => setProfileData({ ...profileData, department: value })}
+                        onValueChange={(value) =>
+                          setProfileData({ ...profileData, department: value })
+                        }
                       >
                         <SelectTrigger id="department">
                           <SelectValue placeholder="Select your department" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="computer-science">School of Computing</SelectItem>
-                          <SelectItem value="engineering">School of Engineering</SelectItem>
-                          <SelectItem value="business">School of Business</SelectItem>
-                          <SelectItem value="accounting">School of Accounting & Finance</SelectItem>
-                          <SelectItem value="foundation">Foundation Studies</SelectItem>
+                          <SelectItem value="computer-science">
+                            School of Computing
+                          </SelectItem>
+                          <SelectItem value="engineering">
+                            School of Engineering
+                          </SelectItem>
+                          <SelectItem value="business">
+                            School of Business
+                          </SelectItem>
+                          <SelectItem value="accounting">
+                            School of Accounting & Finance
+                          </SelectItem>
+                          <SelectItem value="foundation">
+                            Foundation Studies
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -391,7 +588,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Input
                           id="program"
                           value={profileData.program}
-                          onChange={(e) => setProfileData({ ...profileData, program: e.target.value })}
+                          onChange={(e) =>
+                            setProfileData({
+                              ...profileData,
+                              program: e.target.value,
+                            })
+                          }
                           placeholder="e.g., BSc (Hons) in Computer Science"
                         />
                       </div>
@@ -399,7 +601,12 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Label htmlFor="yearOfStudy">Year of Study</Label>
                         <Select
                           value={profileData.yearOfStudy}
-                          onValueChange={(value) => setProfileData({ ...profileData, yearOfStudy: value })}
+                          onValueChange={(value) =>
+                            setProfileData({
+                              ...profileData,
+                              yearOfStudy: value,
+                            })
+                          }
                         >
                           <SelectTrigger id="yearOfStudy">
                             <SelectValue placeholder="Select year" />
@@ -438,6 +645,62 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
               </Card>
             </TabsContent>
 
+            {/* Voting History Tab */}
+            <TabsContent value="history" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Voting History</CardTitle>
+                  <CardDescription>
+                    All your past voting activities on the blockchain
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {votingHistory.length > 0 ? (
+                    <div className="space-y-4">
+                      {votingHistory.map((vote) => (
+                        <div
+                          key={vote.id}
+                          className="flex items-center justify-between p-4 border rounded-lg"
+                        >
+                          <div className="flex items-start gap-4">
+                            <div className="p-2 bg-emerald-50 rounded-lg">
+                              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                            </div>
+                            <div>
+                              <h3 className="font-semibold text-slate-900">
+                                {vote.electionTitle}
+                              </h3>
+                              <p className="text-sm text-slate-600">
+                                Voted on{" "}
+                                {new Date(vote.date).toLocaleDateString()}
+                              </p>
+                              <p className="text-xs text-slate-500 font-mono mt-1">
+                                TX: {vote.transactionHash}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge className="bg-emerald-500">
+                            {vote.status}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-12">
+                      <Vote className="h-12 w-12 text-slate-300 mb-4" />
+                      <p className="text-slate-600">No voting history yet</p>
+                      <Button
+                        className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => onNavigate("vote")}
+                      >
+                        Cast Your First Vote
+                      </Button>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
             {/* Wallet & Security Tab */}
             <TabsContent value="wallet">
               <div className="space-y-6">
@@ -449,7 +712,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       Connected Wallet
                     </CardTitle>
                     <CardDescription>
-                      Your blockchain wallet used for voting and identity verification
+                      Your blockchain wallet used for voting and identity
+                      verification
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -471,7 +735,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Alert className="bg-amber-50 border-amber-200">
                         <AlertCircle className="h-4 w-4 text-amber-600" />
                         <AlertDescription className="ml-2 text-amber-800">
-                          No wallet connected. Connect your MetaMask wallet to participate in voting.
+                          No wallet connected. Connect your MetaMask wallet to
+                          participate in voting.
                         </AlertDescription>
                       </Alert>
                     )}
@@ -490,7 +755,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                           Connect MetaMask
                         </Button>
                       )}
-                      <Button variant="outline" onClick={() => onNavigate('voter-registration')}>
+                      <Button
+                        variant="outline"
+                        onClick={() => onNavigate("voter-registration")}
+                      >
                         View Wallet Details
                       </Button>
                     </div>
@@ -498,7 +766,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                       <h4 className="text-sm text-blue-900 mb-2">Important:</h4>
                       <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
-                        <li>Your wallet address is used to verify your identity</li>
+                        <li>
+                          Your wallet address is used to verify your identity
+                        </li>
                         <li>You can only vote once per election per wallet</li>
                         <li>Never share your wallet private key with anyone</li>
                         <li>Ensure you have some ETH for transaction fees</li>
@@ -529,7 +799,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Switch
                         checked={securitySettings.twoFactorAuth}
                         onCheckedChange={(checked) =>
-                          setSecuritySettings({ ...securitySettings, twoFactorAuth: checked })
+                          setSecuritySettings({
+                            ...securitySettings,
+                            twoFactorAuth: checked,
+                          })
                         }
                         disabled
                       />
@@ -547,7 +820,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Switch
                         checked={securitySettings.publicProfile}
                         onCheckedChange={(checked) =>
-                          setSecuritySettings({ ...securitySettings, publicProfile: checked })
+                          setSecuritySettings({
+                            ...securitySettings,
+                            publicProfile: checked,
+                          })
                         }
                       />
                     </div>
@@ -598,7 +874,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     Notification Preferences
                   </CardTitle>
                   <CardDescription>
-                    Choose how you want to receive updates about elections and voting
+                    Choose how you want to receive updates about elections and
+                    voting
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -616,7 +893,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Switch
                           checked={notificationSettings.emailNewElections}
                           onCheckedChange={(checked) =>
-                            setNotificationSettings({ ...notificationSettings, emailNewElections: checked })
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              emailNewElections: checked,
+                            })
                           }
                         />
                       </div>
@@ -633,7 +913,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Switch
                           checked={notificationSettings.emailDeadlines}
                           onCheckedChange={(checked) =>
-                            setNotificationSettings({ ...notificationSettings, emailDeadlines: checked })
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              emailDeadlines: checked,
+                            })
                           }
                         />
                       </div>
@@ -650,7 +933,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Switch
                           checked={notificationSettings.emailResults}
                           onCheckedChange={(checked) =>
-                            setNotificationSettings({ ...notificationSettings, emailResults: checked })
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              emailResults: checked,
+                            })
                           }
                         />
                       </div>
@@ -667,7 +953,10 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Switch
                           checked={notificationSettings.emailUpdates}
                           onCheckedChange={(checked) =>
-                            setNotificationSettings({ ...notificationSettings, emailUpdates: checked })
+                            setNotificationSettings({
+                              ...notificationSettings,
+                              emailUpdates: checked,
+                            })
                           }
                         />
                       </div>
@@ -689,13 +978,17 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Switch
                         checked={notificationSettings.smsAlerts}
                         onCheckedChange={(checked) =>
-                          setNotificationSettings({ ...notificationSettings, smsAlerts: checked })
+                          setNotificationSettings({
+                            ...notificationSettings,
+                            smsAlerts: checked,
+                          })
                         }
                         disabled
                       />
                     </div>
                     <p className="text-xs text-slate-500">
-                      SMS notifications require phone number verification (Coming soon)
+                      SMS notifications require phone number verification
+                      (Coming soon)
                     </p>
                   </div>
 
@@ -761,9 +1054,15 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <SelectValue placeholder="Select timezone" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="malaysia">Malaysia (GMT+8)</SelectItem>
-                        <SelectItem value="singapore">Singapore (GMT+8)</SelectItem>
-                        <SelectItem value="thailand">Thailand (GMT+7)</SelectItem>
+                        <SelectItem value="malaysia">
+                          Malaysia (GMT+8)
+                        </SelectItem>
+                        <SelectItem value="singapore">
+                          Singapore (GMT+8)
+                        </SelectItem>
+                        <SelectItem value="thailand">
+                          Thailand (GMT+7)
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-slate-500">
@@ -777,21 +1076,71 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     <Label>Privacy</Label>
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                       <p className="text-sm text-blue-900 mb-2">
-                        Your voting choices are always private and encrypted on the blockchain.
+                        Your voting choices are always private and encrypted on
+                        the blockchain.
                       </p>
                       <p className="text-xs text-blue-800">
-                        Only you can see your voting history. Election results show aggregate vote counts without revealing individual votes.
+                        Only you can see your voting history. Election results
+                        show aggregate vote counts without revealing individual
+                        votes.
                       </p>
                     </div>
                   </div>
 
                   <div className="flex justify-end pt-4">
-                    <Button
-                      disabled
-                      variant="outline"
-                    >
+                    <Button disabled variant="outline">
                       Save Preferences (Coming Soon)
                     </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Achievements Tab */}
+            <TabsContent value="achievements" className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Achievements</CardTitle>
+                  <CardDescription>
+                    Badges earned through active participation
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50">
+                      <Award className="h-12 w-12 text-emerald-600 mb-2" />
+                      <h3 className="font-semibold text-slate-900 text-center">
+                        First Vote
+                      </h3>
+                      <p className="text-sm text-slate-600 text-center mt-1">
+                        Cast your first vote
+                      </p>
+                      <Badge className="mt-2 bg-emerald-500">Earned</Badge>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
+                      <TrendingUp className="h-12 w-12 text-slate-400 mb-2" />
+                      <h3 className="font-semibold text-slate-900 text-center">
+                        Active Voter
+                      </h3>
+                      <p className="text-sm text-slate-600 text-center mt-1">
+                        Vote in 5 elections
+                      </p>
+                      <Badge variant="outline" className="mt-2">
+                        Locked
+                      </Badge>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
+                      <Shield className="h-12 w-12 text-slate-400 mb-2" />
+                      <h3 className="font-semibold text-slate-900 text-center">
+                        Verified Voter
+                      </h3>
+                      <p className="text-sm text-slate-600 text-center mt-1">
+                        Complete wallet verification
+                      </p>
+                      <Badge variant="outline" className="mt-2">
+                        Locked
+                      </Badge>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -799,6 +1148,35 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
           </Tabs>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="w-full border-t py-6 bg-white">
+        <div className="container mx-auto max-w-7xl flex flex-col items-center justify-between gap-4 md:flex-row px-6 md:px-8">
+          <div className="text-center text-sm text-slate-600 md:text-left">
+            © {new Date().getFullYear()} APU Vote Chain. All rights reserved.
+          </div>
+          <div className="flex gap-6">
+            <button
+              onClick={() => onNavigate("terms")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Terms
+            </button>
+            <button
+              onClick={() => onNavigate("privacy")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Privacy
+            </button>
+            <button
+              onClick={() => onNavigate("contact")}
+              className="text-sm text-slate-600 hover:text-slate-900"
+            >
+              Contact
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

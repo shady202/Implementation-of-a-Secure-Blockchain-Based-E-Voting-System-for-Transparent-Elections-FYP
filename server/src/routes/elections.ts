@@ -29,6 +29,55 @@ router.get("/election-settings", async (req, res) => {
   }
 });
 
+// POST /api/elections/create - Create new election in database
+router.post("/create", async (req, res) => {
+  try {
+    const { title, startDate, endDate, showResultsDuringVoting } = req.body;
+
+    if (!title || !startDate || !endDate) {
+      return res
+        .status(400)
+        .json({ error: "Title, start date, and end date are required" });
+    }
+
+    // Insert into elections table with CORRECT column names
+    const result = await query(
+      `INSERT INTO elections (
+        title,
+        start_time,
+        end_time,
+        is_active,
+        created_at
+      ) VALUES ($1, $2, $3, false, NOW())
+      RETURNING *`,
+      [title, startDate, endDate]
+    );
+
+    const election = result.rows[0];
+
+    // Log audit activity
+    await query(
+      `INSERT INTO audit_logs (action, description, created_at)
+       VALUES ('election_created', $1, NOW())`,
+      [`Election "${title}" created`]
+    );
+
+    res.json({
+      success: true,
+      election: {
+        id: election.id,
+        title: election.title,
+        startTime: election.start_time,
+        endTime: election.end_time,
+        isActive: election.is_active,
+      },
+    });
+  } catch (error) {
+    console.error("Error creating election:", error);
+    res.status(500).json({ error: "Failed to create election" });
+  }
+});
+
 // Update election settings (admin only)
 router.post(
   "/election-settings",
@@ -131,6 +180,36 @@ router.get("/active", optionalAuth, async (req, res) => {
   } catch (error) {
     console.error("Error fetching active election:", error);
     res.status(500).json({ error: "Failed to fetch active election" });
+  }
+});
+
+// Get current/active election (alias for /active)
+router.get("/current", optionalAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, title, start_time, end_time, is_active, created_at
+       FROM elections
+       WHERE is_active = true
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ election: null });
+    }
+
+    res.json({
+      election: {
+        id: result.rows[0].id,
+        title: result.rows[0].title,
+        startTime: result.rows[0].start_time,
+        endTime: result.rows[0].end_time,
+        isActive: result.rows[0].is_active,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching current election:", error);
+    res.status(500).json({ error: "Failed to fetch current election" });
   }
 });
 

@@ -10,7 +10,7 @@ import { Badge } from "./ui/badge";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
 const apuLogo = "/apu-logo.png";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface ElectionsPageProps {
   onNavigate: (page: string) => void;
@@ -21,6 +21,16 @@ export function ElectionsPage({ onNavigate }: ElectionsPageProps) {
   const [activeTab, setActiveTab] = useState<"active" | "upcoming" | "past">(
     "active"
   );
+
+  useEffect(() => {
+    // Check if user is logged in
+    if (!currentUser) {
+      console.log("❌ Not logged in - redirecting to login");
+      localStorage.setItem("intendedDestination", "elections");
+      onNavigate("login");
+      return;
+    }
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-col bg-gradient-to-b from-emerald-50 to-white">
@@ -75,13 +85,14 @@ export function ElectionsPage({ onNavigate }: ElectionsPageProps) {
             ) : (
               <>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onNavigate("register")}
-                  className="text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >

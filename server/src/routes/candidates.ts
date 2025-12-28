@@ -61,17 +61,18 @@ router.post("/", async (req: AuthRequest, res) => {
     console.log("  - candidateId:", candidateId);
     console.log("  - categoryName:", categoryName);
 
-    // Get active election if available (optional)
+    // Get latest election if available (changed from active to latest)
     let electionId = election_id || null;
     if (!electionId) {
-      const activeElection = await query(
-        "SELECT id FROM elections WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
+      const latestElection = await query(
+        "SELECT id FROM elections ORDER BY created_at DESC LIMIT 1"
       );
 
-      if (activeElection.rows.length > 0) {
-        electionId = activeElection.rows[0].id;
+      if (latestElection.rows.length > 0) {
+        electionId = latestElection.rows[0].id;
+        console.log("  - Using latest election_id:", electionId);
       }
-      // If no active election, electionId stays null - database column is nullable
+      // If no election exists, electionId stays null - database column is nullable
     }
 
     // Find the category by name (handle NULL election_id)
@@ -104,6 +105,13 @@ router.post("/", async (req: AuthRequest, res) => {
     );
 
     console.log("✅ Candidate saved to database:", result.rows[0].id);
+
+    // Log audit activity
+    await query(
+      `INSERT INTO audit_logs (action, description, created_at)
+       VALUES ('candidate_created', $1, NOW())`,
+      [`Candidate "${name}" added to ${categoryName}`]
+    );
 
     res.json({
       success: true,

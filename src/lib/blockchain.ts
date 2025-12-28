@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 import VotingSystemABI from "./VotingSystemABI";
 import { toast } from "sonner";
 
-export const CONTRACT_ADDRESS = "0x50a7daAbE0ca9ec92B5f6687dBb28e060e3E317f";
+export const CONTRACT_ADDRESS = "0x2DCa51f1095B2BbF7a5A1A8f6c0E7c7B8AD0e613";
 
 /* ================= PROVIDER ================= */
 
@@ -44,7 +44,6 @@ export const createElection = async (
   const tx = await contract.createElection(title, startTime, endTime);
   toast.info("Creating election...");
   await tx.wait();
-  toast.success("Election created");
 };
 
 export const startElection = async () => {
@@ -52,7 +51,6 @@ export const startElection = async () => {
   const tx = await contract.startElection();
   toast.info("Starting election...");
   await tx.wait();
-  toast.success("Election started");
 };
 
 export const endElection = async () => {

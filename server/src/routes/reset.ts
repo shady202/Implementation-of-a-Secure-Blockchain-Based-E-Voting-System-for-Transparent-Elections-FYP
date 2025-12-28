@@ -15,7 +15,7 @@ router.post("/", async (req: AuthRequest, res) => {
     await query("DELETE FROM voters");
     await query("DELETE FROM elections");
 
-    console.log("✅ Database reset complete!");
+    console.log("Database reset complete!");
 
     res.json({
       success: true,

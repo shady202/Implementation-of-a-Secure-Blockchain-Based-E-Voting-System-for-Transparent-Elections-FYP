@@ -95,13 +95,14 @@ export function VoteSuccessPage({
             ) : (
               <>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onNavigate("register")}
-                  className="text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
@@ -183,6 +184,18 @@ export function VoteSuccessPage({
                     https://hoodi.etherscan.io/
                     <ExternalLink className="h-3 w-3" />
                   </a>
+                </p>
+              </div>
+
+              {/* Email Confirmation Notice */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-slate-700 leading-relaxed">
+                  <span className="font-semibold text-blue-700">
+                    📧 Email Confirmation:
+                  </span>{" "}
+                  A confirmation email with your vote details and transaction
+                  hash has been sent to your registered email address for your
+                  records.
                 </p>
               </div>
 

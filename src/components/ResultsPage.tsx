@@ -205,7 +205,19 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
             </button>
           </nav>
           <div className="flex items-center gap-3 w-48 justify-end">
-            {currentUser && <UserNav onNavigate={onNavigate} />}
+            {currentUser ? (
+              <UserNav onNavigate={onNavigate} />
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => onNavigate("register")}
+                >
+                  Register
+                </Button>
+                <Button onClick={() => onNavigate("login")}>Sign In</Button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -255,55 +267,57 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
 
           {/* Results hidden during voting */}
           {!showResults && electionActive ? (
-            <Card>
-              <CardContent className="py-16">
-                <div className="flex flex-col items-center justify-center text-center space-y-4">
-                  <AlertCircle className="h-16 w-16 text-amber-500" />
-                  <h3 className="text-slate-900">Results Hidden</h3>
-                  <p className="text-slate-600 max-w-md">
-                    Results are hidden during the voting period. Please check
-                    back after the election ends to view the results.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center text-center space-y-6 py-24">
+              <div className="bg-amber-500 rounded-full p-6 shadow-xl">
+                <AlertCircle className="h-16 w-16 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900">
+                Results Hidden
+              </h3>
+              <p className="text-lg text-slate-600 max-w-md">
+                Results are hidden during the voting period. Please check back
+                after the election ends to view the results.
+              </p>
+            </div>
           ) : loading ? (
-            <Card>
-              <CardContent className="py-16">
-                <div className="flex flex-col items-center justify-center">
-                  <RefreshCw className="h-8 w-8 animate-spin text-emerald-500 mb-4" />
-                  <p className="text-slate-600">Loading results...</p>
+            <div className="flex flex-col items-center justify-center space-y-6 py-24">
+              <div className="relative">
+                <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
+                  <RefreshCw className="h-16 w-16 animate-spin text-white" />
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <p className="text-xl font-medium text-slate-700">
+                Loading results...
+              </p>
+            </div>
           ) : activeCategories.length === 0 ? (
-            <Card>
-              <CardContent className="py-16">
-                <div className="flex flex-col items-center justify-center text-center space-y-4">
-                  <AlertCircle className="h-16 w-16 text-amber-500" />
-                  <h3 className="text-slate-900">No Categories Available</h3>
-                  <p className="text-slate-600 max-w-md">
-                    The election administrator hasn't set up any voting
-                    categories yet.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+            <div className="flex flex-col items-center justify-center text-center space-y-6 py-24">
+              <div className="bg-amber-500 rounded-full p-6 shadow-xl">
+                <AlertCircle className="h-16 w-16 text-white" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-900">
+                No Categories Available
+              </h3>
+              <p className="text-lg text-slate-600 max-w-md">
+                The election administrator hasn't set up any voting categories
+                yet.
+              </p>
+            </div>
           ) : (
             <Tabs
               value={activeCategory}
               onValueChange={setActiveCategory}
               className="w-full"
             >
-              <TabsList className="w-full mb-6 bg-slate-200 p-1 rounded-lg grid grid-cols-3 shadow-sm">
+              <TabsList className="w-full mb-6 bg-slate-200 p-1 rounded-xl grid grid-cols-3 h-14">
                 {activeCategories.map((category) => (
                   <TabsTrigger
                     key={category.id}
                     value={category.name}
                     className="
-                      rounded-md transition-colors
-                      data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm
-                      data-[state=inactive]:text-slate-500 data-[state=inactive]:bg-transparent
+                      rounded-lg transition-all duration-200 font-medium
+                      data-[state=active]:!bg-white data-[state=active]:!text-slate-900 data-[state=active]:!shadow-md
+                      data-[state=inactive]:!bg-gray-400 data-[state=inactive]:!text-slate-700
                     "
                   >
                     {category.name}
@@ -402,7 +416,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
                                       {/* Progress bar */}
                                       <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                                         <div
-                                          className={`h-full transition-all ${
+                                          className={`h-full transition-all duration-500 ${
                                             isWinner
                                               ? "bg-emerald-500"
                                               : "bg-slate-400"

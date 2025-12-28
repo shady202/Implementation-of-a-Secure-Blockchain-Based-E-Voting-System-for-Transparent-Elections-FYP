@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { loginUser, loginAdmin } from "../lib/auth";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
+import { createSession } from "../lib/session"; // Import to create session after OTP
 
 const apuLogo = "/apu-logo.png";
 
@@ -32,6 +33,24 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   const [activeTab, setActiveTab] = useState("student");
   const [error, setError] = useState("");
   const currentUser = isLoggedIn();
+
+  // OTP State
+  const [showOtpInput, setShowOtpInput] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [countdown, setCountdown] = useState(0);
+  const [otpEmail, setOtpEmail] = useState("");
+
+  // Store pending user data until OTP is verified
+  const [pendingUser, setPendingUser] = useState<any>(null);
+  const [pendingToken, setPendingToken] = useState<string>("");
+
+  // Admin wallet verification state
+  const [adminCredentialsVerified, setAdminCredentialsVerified] =
+    useState(false);
+  const [adminEmail, setAdminEmail] = useState("");
+  const [expectedWalletAddress, setExpectedWalletAddress] = useState("");
+  const [verifyingWallet, setVerifyingWallet] = useState(false);
+
   const [studentForm, setStudentForm] = useState({
     studentId: "",
     password: "",
@@ -77,15 +96,26 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       });
 
       if (response.success) {
-        toast.success("Login successful!");
+        // Store user data but DON'T create session yet
+        setPendingUser(response.user);
+        setPendingToken(response.token || "");
 
-        // Check for intended destination
-        const intended = localStorage.getItem("intendedDestination");
-        if (intended) {
-          localStorage.removeItem("intendedDestination");
-          onNavigate(intended);
+        // Request OTP for email verification
+        if (response.user?.email) {
+          await handleRequestOtp(response.user.email);
         } else {
-          onNavigate("home");
+          // No email - create session immediately (backward compatibility)
+          if (response.user && response.token) {
+            createSession(response.user, response.token);
+          }
+          toast.success("Login successful!");
+          const intended = localStorage.getItem("intendedDestination");
+          if (intended) {
+            localStorage.removeItem("intendedDestination");
+            onNavigate(intended);
+          } else {
+            onNavigate("home");
+          }
         }
       } else {
         setError(response.message || "Invalid student ID or password");
@@ -104,23 +134,213 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
     setError("");
 
     try {
+      // Validate email and password
       const response = await loginAdmin({
         email: adminForm.email,
         password: adminForm.password,
       });
 
-      if (response.success) {
-        toast.success("Admin login successful!");
-        onNavigate("admin");
-      } else {
+      if (!response.success) {
         setError(response.message || "Invalid admin credentials");
+        toast.error("Invalid email or password");
+        setLoading(false);
+        return;
       }
+
+      // SUCCESS - Navigate to dashboard
+      toast.success("Login successful!");
+      setLoading(false);
+      setTimeout(() => onNavigate("admin"), 500);
     } catch (err) {
+      toast.error("An error occurred during admin login");
       setError("An error occurred during admin login");
       console.error(err);
+      setLoading(false);
+    }
+  };
+
+  // Separate function to verify wallet (called by button click)
+  const handleVerifyAdminWallet = async () => {
+    setVerifyingWallet(true);
+    setError("");
+
+    try {
+      // Check MetaMask installation
+      if (typeof window === "undefined" || !(window as any).ethereum) {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setError("MetaMask not detected. Please install MetaMask extension.");
+        setVerifyingWallet(false);
+        return;
+      }
+
+      // Connect wallet
+      const { connectWallet } = await import("../lib/blockchain");
+      const connectedWallet = await connectWallet();
+
+      if (!connectedWallet) {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setError("Failed to connect wallet. Please connect MetaMask.");
+        setVerifyingWallet(false);
+        return;
+      }
+
+      // Verify wallet address
+      const verifyResponse = await fetch(
+        "http://localhost:3001/api/admin/verify-wallet",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: adminEmail,
+            walletAddress: connectedWallet,
+          }),
+        }
+      );
+
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || !verifyData.success) {
+        toast.error(
+          "Please change your wallet address to the admin wallet address",
+          {
+            style: { background: "#fee2e2", color: "#dc2626" },
+            duration: 5000,
+          }
+        );
+        setError(
+          verifyData.message ||
+            "Unauthorized wallet address. Please connect with your registered admin wallet."
+        );
+        setVerifyingWallet(false);
+        return;
+      }
+
+      // SUCCESS! Wallet verified - NOW navigate
+      toast.success("Wallet verified! Redirecting to admin dashboard...");
+      setVerifyingWallet(false);
+
+      setTimeout(() => {
+        onNavigate("admin");
+      }, 1000);
+    } catch (walletError: any) {
+      console.error("Wallet verification error:", walletError);
+
+      if (walletError.code === 4001) {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setError(
+          "Wallet connection rejected. Please connect MetaMask to continue."
+        );
+      } else {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setError("Failed to connect to MetaMask. Please try again.");
+      }
+
+      setVerifyingWallet(false);
+    }
+  };
+
+  // Handle OTP Request
+  const handleRequestOtp = async (email: string) => {
+    try {
+      const response = await fetch(
+        "http://localhost:3001/api/auth/request-otp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Failed to send OTP");
+      }
+
+      setOtpEmail(email);
+      setShowOtpInput(true);
+      setCountdown(60);
+      toast.success("Verification code sent to your email!");
+
+      // Start countdown timer
+      const timer = setInterval(() => {
+        setCountdown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send verification code");
+      throw error;
+    }
+  };
+
+  // Handle OTP Verification
+  const handleVerifyOtp = async () => {
+    if (otpCode.length !== 6) {
+      toast.error("Please enter a 6-digit code");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch(
+        "http://localhost:3001/api/auth/verify-otp",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: otpEmail, otp: otpCode }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Invalid verification code");
+      }
+
+      toast.success("Email verified successfully!");
+      setShowOtpInput(false);
+
+      // NOW create session after OTP is verified
+      if (pendingUser && pendingToken) {
+        createSession(pendingUser, pendingToken);
+      }
+
+      // Proceed with login
+      toast.success("Login successful!");
+      const intended = localStorage.getItem("intendedDestination");
+      if (intended) {
+        localStorage.removeItem("intendedDestination");
+        onNavigate(intended);
+      } else {
+        onNavigate("home");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Verification failed");
     } finally {
       setLoading(false);
     }
+  };
+
+  // Resend OTP
+  const handleResendOtp = async () => {
+    if (countdown > 0) return;
+    setOtpCode("");
+    await handleRequestOtp(otpEmail);
   };
 
   return (
@@ -176,13 +396,14 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
             ) : (
               <>
                 <Button
-                  variant="ghost"
+                  variant="outline"
+                  size="sm"
                   onClick={() => onNavigate("register")}
-                  className="text-slate-600 hover:text-slate-900"
                 >
                   Register
                 </Button>
                 <Button
+                  size="sm"
                   onClick={() => onNavigate("login")}
                   className="bg-slate-900 hover:bg-slate-800 text-white"
                 >
@@ -233,80 +454,6 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
               </TabsList>
 
               <TabsContent value="student" className="space-y-4 mt-6">
-                {/* Social Login Options */}
-                <div className="space-y-3">
-                  <div className="text-center">
-                    <p className="text-slate-600 mb-4">
-                      Sign in with your university account
-                    </p>
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    className="w-full h-11 bg-transparent"
-                    onClick={() => handleSocialLogin("google")}
-                    disabled={socialLoading !== null || loading}
-                  >
-                    {socialLoading === "google" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
-                        />
-                      </svg>
-                    )}
-                    {socialLoading === "google"
-                      ? "Signing in..."
-                      : "Continue with Google"}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    className="w-full h-11 bg-transparent"
-                    onClick={() => handleSocialLogin("microsoft")}
-                    disabled={socialLoading !== null || loading}
-                  >
-                    {socialLoading === "microsoft" ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
-                        <path fill="#F25022" d="M1 1h10v10H1z" />
-                        <path fill="#00A4EF" d="M13 1h10v10H13z" />
-                        <path fill="#7FBA00" d="M1 13h10v10H1z" />
-                        <path fill="#FFB900" d="M13 13h10v10H13z" />
-                      </svg>
-                    )}
-                    {socialLoading === "microsoft"
-                      ? "Signing in..."
-                      : "Continue with Microsoft"}
-                  </Button>
-
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <Separator className="w-full" />
-                    </div>
-                    <div className="relative flex justify-center">
-                      <span className="bg-white px-2 text-slate-600">
-                        Or continue with
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
                 {/* Traditional Login Form */}
                 <form onSubmit={handleStudentLogin} className="space-y-4">
                   <div className="space-y-2">
@@ -356,6 +503,68 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                     </div>
                   </div>
 
+                  {/* OTP Verification Section */}
+                  {showOtpInput && (
+                    <div className="space-y-4 mt-6 p-4 border-2 border-green-200 rounded-lg bg-green-50">
+                      <div className="flex items-center gap-2 text-green-700">
+                        <ShieldAlert className="h-5 w-5" />
+                        <span className="font-semibold">
+                          Email Verification Required
+                        </span>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        We've sent a 6-digit code to <strong>{otpEmail}</strong>
+                      </p>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="otp">Verification Code</Label>
+                        <Input
+                          id="otp"
+                          type="text"
+                          maxLength={6}
+                          placeholder="Enter 6-digit code"
+                          value={otpCode}
+                          onChange={(e) =>
+                            setOtpCode(e.target.value.replace(/\D/g, ""))
+                          }
+                          className="text-center text-2xl tracking-widest font-mono"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Button
+                          onClick={handleVerifyOtp}
+                          disabled={loading || otpCode.length !== 6}
+                          style={{ backgroundColor: "#16a34a", color: "white" }}
+                          className="w-full hover:bg-green-700 text-white h-12 text-base font-semibold"
+                          type="button"
+                        >
+                          {loading ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Verifying...
+                            </>
+                          ) : (
+                            "Verify & Login"
+                          )}
+                        </Button>
+
+                        <Button
+                          onClick={handleResendOtp}
+                          disabled={countdown > 0}
+                          variant="outline"
+                          className="w-full"
+                          type="button"
+                        >
+                          {countdown > 0
+                            ? `Resend Code (${countdown}s)`
+                            : "Resend Code"}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {error && (
                     <Alert variant="destructive">
                       <ShieldAlert className="h-4 w-4" />
@@ -363,20 +572,22 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                     </Alert>
                   )}
 
-                  <Button
-                    type="submit"
-                    className="w-full bg-emerald-500 hover:bg-emerald-600"
-                    disabled={loading || socialLoading !== null}
-                  >
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
-                      </>
-                    ) : (
-                      "Sign In"
-                    )}
-                  </Button>
+                  {!showOtpInput && (
+                    <Button
+                      type="submit"
+                      className="w-full bg-emerald-500 hover:bg-emerald-600"
+                      disabled={loading || socialLoading !== null}
+                    >
+                      {loading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        "Sign In"
+                      )}
+                    </Button>
+                  )}
                 </form>
 
                 <div className="text-center space-y-2">

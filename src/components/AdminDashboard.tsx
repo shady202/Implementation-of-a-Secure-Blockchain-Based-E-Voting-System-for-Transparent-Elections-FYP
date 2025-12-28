@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import {
   ArrowLeft,
   Loader2,
@@ -67,6 +67,8 @@ import { Progress } from "./ui/progress";
 
 const apuLogo = "/apu-logo.png";
 
+const API_URL = "http://localhost:3001";
+
 // Helper to get current user ID for API calls
 const getCurrentUserId = () => localStorage.getItem("user_id");
 
@@ -126,9 +128,24 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     category: "",
     contractId: "",
   });
-  const [showResultsDuringVoting, setShowResultsDuringVoting] = useState(false);
+  // Initialize showResultsDuringVoting from localStorage
+  const [showResultsDuringVoting, setShowResultsDuringVoting] = useState(() => {
+    const saved = localStorage.getItem("showResultsDuringVoting");
+    return saved === "true";
+  });
   const [activities, setActivities] = useState<Activity[]>([]);
   const [voters, setVoters] = useState<Voter[]>([]);
+
+  // Track if component has mounted to prevent saving default value
+  const isFirstRender = useRef(true);
+
+  // Wallet verification state
+  const [walletConnected, setWalletConnected] = useState(false);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [adminWalletAddress, setAdminWalletAddress] = useState<string | null>(
+    null
+  );
+  const [walletVerified, setWalletVerified] = useState(false);
 
   // Admin data derived from election state and fetched data
   const adminData = {
@@ -229,27 +246,216 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     }
   };
 
+  // Wallet verification function
+  const verifyAdminWallet = async () => {
+    try {
+      // Get admin data from session/localStorage
+      const adminData = JSON.parse(localStorage.getItem("currentUser") || "{}");
+      const expectedWalletAddress =
+        adminData.wallet_address || adminData.walletAddress;
+
+      if (!expectedWalletAddress) {
+        toast.error("No wallet address found for admin account");
+        return false;
+      }
+
+      setAdminWalletAddress(expectedWalletAddress);
+
+      // Check if MetaMask is installed
+      if (typeof window === "undefined" || !(window as any).ethereum) {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setWalletVerified(false);
+        return false;
+      }
+
+      // Use eth_requestAccounts which prompts unlock if needed
+      const accounts = await (window as any).ethereum.request({
+        method: "eth_requestAccounts", // This will prompt unlock if locked!
+      });
+
+      if (!accounts || accounts.length === 0) {
+        toast.error("Please connect your wallet first", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setWalletConnected(false);
+        setWalletVerified(false);
+        return false;
+      }
+
+      const connectedAddress = accounts[0];
+
+      // CRITICAL: Require signature to verify MetaMask is ACTUALLY unlocked
+      // personal_sign REQUIRES private key access - fails if locked!
+      try {
+        const message = `Verify admin wallet: ${Date.now()}`;
+        await (window as any).ethereum.request({
+          method: "personal_sign",
+          params: [message, connectedAddress],
+        });
+      } catch (signError: any) {
+        // Signature failed - MetaMask locked or user rejected
+        if (signError.code === 4001) {
+          toast.error("Signature request rejected", {
+            style: { background: "#fee2e2", color: "#dc2626" },
+          });
+        } else {
+          toast.error("Please unlock MetaMask first", {
+            style: { background: "#fee2e2", color: "#dc2626" },
+          });
+        }
+        setWalletConnected(false);
+        setWalletVerified(false);
+        return false;
+      }
+
+      // Signature successful - MetaMask is unlocked!
+      setWalletAddress(connectedAddress);
+      setWalletConnected(true);
+
+      // Compare addresses (case-insensitive)
+      if (
+        connectedAddress.toLowerCase() !== expectedWalletAddress.toLowerCase()
+      ) {
+        toast.error(
+          "Please change your wallet address to the admin wallet address",
+          {
+            style: { background: "#fee2e2", color: "#dc2626" },
+            duration: 5000,
+          }
+        );
+        setWalletVerified(false);
+        return false;
+      }
+
+      // Success!
+      setWalletVerified(true);
+      toast.success("Admin wallet verified!");
+      return true;
+    } catch (error: any) {
+      console.error("Wallet verification error:", error);
+      // User rejected the connection request
+      if (error.code === 4001) {
+        toast.error("Wallet connection rejected");
+      } else {
+        toast.error("Failed to verify wallet");
+      }
+      setWalletVerified(false);
+      return false;
+    }
+  };
+
   useEffect(() => {
     loadAll();
 
-    // Set up auto-refresh polling every 30 seconds
+    // Initial wallet verification
+    verifyAdminWallet();
+
+    // Listen for account changes
+    if ((window as any).ethereum) {
+      const handleAccountsChanged = (accounts: string[]) => {
+        if (accounts.length === 0) {
+          setWalletConnected(false);
+          setWalletVerified(false);
+          toast.error("Please connect your wallet first", {
+            style: { background: "#fee2e2", color: "#dc2626" },
+          });
+        } else {
+          // Re-verify when account changes
+          verifyAdminWallet();
+        }
+      };
+
+      (window as any).ethereum.on("accountsChanged", handleAccountsChanged);
+
+      return () => {
+        (window as any).ethereum.removeListener(
+          "accountsChanged",
+          handleAccountsChanged
+        );
+      };
+    }
+
+    // Set up auto-refresh polling every 10 seconds for more responsive updates
     const refreshInterval = setInterval(() => {
       fetchActivities();
       fetchVoters();
-    }, 30000); // 30 seconds
+    }, 10000); // 10 seconds (reduced from 30)
 
     return () => clearInterval(refreshInterval);
   }, []);
 
+  // Populate form fields when election data is loaded
+  useEffect(() => {
+    if (election && election.title) {
+      // Convert timestamps to date strings for input fields
+      const startDate = election.startTime
+        ? new Date(election.startTime * 1000).toISOString().slice(0, 16)
+        : "";
+      const endDate = election.endTime
+        ? new Date(election.endTime * 1000).toISOString().slice(0, 16)
+        : "";
+
+      setNewElection({
+        title: election.title || "",
+        startDate: startDate,
+        endDate: endDate,
+      });
+    }
+  }, [election]);
+
+  // Save showResultsDuringVoting to localStorage whenever it changes (skip first render)
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    localStorage.setItem(
+      "showResultsDuringVoting",
+      String(showResultsDuringVoting)
+    );
+  }, [showResultsDuringVoting]);
+
   const handleCreateElection = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
+
+      // Step 1: Save to DATABASE first
+      const response = await fetch(`${API_URL}/api/elections/create`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({
+          title: newElection.title,
+          startDate: newElection.startDate,
+          endDate: newElection.endDate,
+          showResultsDuringVoting: showResultsDuringVoting,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save election to database");
+      }
+
+      // Step 2: Save to BLOCKCHAIN
       const start = Math.floor(
         new Date(newElection.startDate).getTime() / 1000
       );
       const end = Math.floor(new Date(newElection.endDate).getTime() / 1000);
       await createElection(newElection.title, start, end);
+
       toast.success("Election created successfully!");
       await loadAll();
     } catch (err: any) {
@@ -260,9 +466,27 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleStartElection = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       await startElection();
+
+      // Log activity to database
+      await fetch(`${API_URL}/api/admin/log-activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "election_started",
+          description: "Election started",
+        }),
+      });
+
       toast.success("Election started successfully!");
       await loadAll();
     } catch (err: any) {
@@ -273,9 +497,27 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleEndElection = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       await endElection();
+
+      // Log activity to database
+      await fetch(`${API_URL}/api/admin/log-activity`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "election_ended",
+          description: "Election ended",
+        }),
+      });
+
       toast.success("Election ended successfully!");
       await loadAll();
     } catch (err: any) {
@@ -286,6 +528,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handlePause = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       await pauseSystem();
@@ -298,6 +547,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleUnpause = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       await unpauseSystem();
@@ -310,6 +566,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleResetSystem = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     const confirmed = window.confirm(
       "⚠️ WARNING: This will completely reset the system!\n\n" +
         "This action will DELETE:\n" +
@@ -331,46 +594,107 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       // Auto-handle state transitions for reset
       // States: 0=None, 1=Created (Setup Phase), 2=Active, 3=Ended
-      if (election && election.state === 1) {
-        // If in Setup Phase (Created), start first, then end
-        toast.info("Starting election...");
-        await startElection();
-        toast.success("Election started!");
+      const currentState = election?.state || 0;
 
-        toast.info("Ending election...");
-        await endElection();
-        toast.success("Election ended!");
-      } else if (election && election.state === 2) {
-        // If Active, just end it
-        toast.info("Ending election...");
-        await endElection();
-        toast.success("Election ended!");
+      console.log(`Current election state: ${currentState}`);
+
+      // Always try to end the election before reset (except if no election exists)
+      // The smart contract might require this even if UI shows it as ended
+      if (currentState !== 0) {
+        if (currentState === 1) {
+          // If in Setup Phase (Created), start first
+          try {
+            toast.info("Starting election...");
+            await startElection();
+            toast.success("Election started!");
+          } catch (err: any) {
+            console.warn("Election might already be started:", err);
+          }
+        }
+
+        // Always try to end the election (even if state shows as 3)
+        // This ensures the blockchain contract is satisfied
+        try {
+          toast.info("Ensuring election is ended...");
+          await endElection();
+          // Success message shown by endElection() function
+        } catch (err: any) {
+          const errMsg = err?.message || "";
+          // Ignore error if election is already ended
+          if (
+            errMsg.includes("already ended") ||
+            errMsg.includes("Election ended")
+          ) {
+            console.log("Election was already ended, continuing with reset...");
+            toast.info("Election confirmed as ended. Proceeding with reset...");
+          } else {
+            // Re-throw other errors
+            throw err;
+          }
+        }
+      } else {
+        toast.info("No active election. Proceeding with system reset...");
       }
       // If already Ended (state=3) or None (state=0), just reset
 
+      console.log("✅ Election ended. Starting reset process...");
+
       // Step 1: Reset blockchain
+      console.log("Step 1: Resetting blockchain...");
       toast.info("Resetting blockchain...");
-      await resetSystem();
-      toast.success("✅ Blockchain reset complete!");
+      try {
+        await resetSystem();
+        console.log("✅ Blockchain reset successful!");
+        toast.success("✅ Blockchain reset complete!");
+      } catch (resetErr: any) {
+        console.error("❌ Blockchain reset failed:", resetErr);
+        throw resetErr; // Re-throw to be caught by outer catch
+      }
 
       // Step 2: Reset database
+      console.log("Step 2: Resetting database...");
       toast.info("Resetting database...");
-      const { resetDatabase } = await import("../lib/api");
-      await resetDatabase();
-      toast.success("✅ Database reset complete!");
+      try {
+        const { resetDatabase } = await import("../lib/api");
+        await resetDatabase();
+        console.log("✅ Database reset successful!");
+        toast.success("Database reset complete!");
+      } catch (dbErr: any) {
+        console.error("❌ Database reset failed:", dbErr);
+        toast.error("Database reset failed, but blockchain was reset.");
+      }
 
+      console.log("✅ RESET COMPLETE - Showing success message");
       toast.success(
-        "System reset successfully! You can now create a new election."
+        "🎉 System reset successfully! You can now create a new election.",
+        { duration: 5000 }
       );
+
+      console.log("Reloading data...");
       await loadAll();
+
+      // Clear the form fields for a fresh start
+      setNewElection({ title: "", startDate: "", endDate: "" });
+      setShowResultsDuringVoting(false);
+      localStorage.removeItem("showResultsDuringVoting");
+
+      console.log("✅ All done!");
     } catch (err: any) {
-      toast.error(parseBlockchainError(err));
+      console.error("❌ Reset process failed:", err);
+      toast.error(parseBlockchainError(err), { duration: 8000 });
     } finally {
       setSubmitting(false);
     }
   };
 
   const handleCreateCategory = async () => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -409,7 +733,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       }
 
       setNewCategory({ name: "", description: "" });
-      toast.success("✅ Category created and saved to database!");
+      toast.success("Category saved to database and blockchain!");
       await loadAll();
     } catch (err: any) {
       console.error("Full error:", err);
@@ -421,6 +745,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleDeleteCategory = async (categoryId: number) => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     const confirmed = window.confirm(
       "Are you sure you want to delete this category? This will deactivate it on the blockchain."
     );
@@ -452,7 +783,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       const tx = await contract.deactivateCategory(categoryId);
       await tx.wait();
 
-      toast.success("✅ Category deleted!");
+      toast.success("Category deleted!");
       await loadAll();
     } catch (err: any) {
       console.error("Delete error:", err);
@@ -464,6 +795,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   const handleAddCandidate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       if (!newCandidate.category) {
@@ -522,6 +861,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   };
 
   const handleRemoveCandidate = async (candidateId: number) => {
+    if (!walletVerified) {
+      toast.error("Please connect and verify your admin wallet first", {
+        style: { background: "#fee2e2", color: "#dc2626" },
+      });
+      return;
+    }
+
     try {
       setSubmitting(true);
       // Find the candidate to get its categoryId
@@ -575,10 +921,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   if (loading) {
     return (
-      <div className="container flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center">
-          <Loader2 className="h-8 w-8 animate-spin text-emerald-500 mb-4" />
-          <p className="text-slate-600">Loading admin dashboard...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-emerald-50 to-white">
+        <div className="flex flex-col items-center space-y-6">
+          <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
+            <Loader2 className="h-16 w-16 animate-spin text-white" />
+          </div>
+          <p className="text-xl font-medium text-slate-700">
+            Loading admin dashboard...
+          </p>
         </div>
       </div>
     );
@@ -592,7 +942,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
           <div className="container mx-auto max-w-7xl flex h-16 items-center px-6 md:px-8">
             <div className="flex items-center gap-2 w-48">
               <img src={apuLogo} alt="APU Logo" className="h-8 w-8" />
-              <span className="text-slate-900">APU VOTE</span>
+              <span className="font-semibold text-slate-900">APU VOTE</span>
               <Badge className="bg-indigo-100 text-indigo-700 border-indigo-200 text-xs">
                 Admin
               </Badge>
@@ -668,6 +1018,50 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                 Manage elections, candidates, and monitor voting activity
               </p>
             </div>
+
+            {/* Wallet Verification Alert */}
+            {!walletVerified && (
+              <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-6 rounded-r-lg">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg
+                      className="h-5 w-5 text-blue-500"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </div>
+                  <div className="ml-3 flex-1">
+                    <p className="text-sm text-blue-700 font-medium">
+                      {!walletConnected
+                        ? "Please connect your authorized admin wallet to access full functionality."
+                        : "Wallet connected but address doesn't match. Please switch to your admin wallet."}
+                    </p>
+                    {adminWalletAddress && walletAddress && walletConnected && (
+                      <p className="text-xs text-blue-600 mt-1">
+                        Expected: {adminWalletAddress.slice(0, 6)}...
+                        {adminWalletAddress.slice(-4)} | Connected:{" "}
+                        {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
+                      </p>
+                    )}
+                  </div>
+                  <div className="ml-auto">
+                    <Button
+                      size="sm"
+                      onClick={verifyAdminWallet}
+                      className="bg-blue-600 hover:bg-blue-700"
+                    >
+                      Verify Wallet
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <Card>
@@ -767,7 +1161,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                     <Button
                       size="sm"
                       onClick={handleStartElection}
-                      disabled={submitting}
+                      disabled={!walletVerified || submitting}
                       className="bg-emerald-600 hover:bg-emerald-700 text-xs px-3"
                     >
                       Start Election
@@ -777,6 +1171,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       variant="outline"
                       onClick={handleEndElection}
                       disabled={
+                        !walletVerified ||
                         (adminData.electionStatus !== "Active" &&
                           adminData.electionStatus !== "Setup Phase") ||
                         submitting
@@ -790,7 +1185,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       variant={election?.isPaused ? "default" : "destructive"}
                       onClick={election?.isPaused ? handleUnpause : handlePause}
                       disabled={
-                        submitting || adminData.electionStatus === "Not Started"
+                        !walletVerified ||
+                        submitting ||
+                        adminData.electionStatus === "Not Started"
                       }
                       className="text-xs px-3"
                     >
@@ -806,7 +1203,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               onValueChange={setActiveTab}
               className="w-full"
             >
-              <TabsList className="grid grid-cols-5 mb-8">
+              <TabsList className="grid grid-cols-5 mb-8 h-14 w-full p-2">
                 <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
                 <TabsTrigger value="candidates">Candidates</TabsTrigger>
                 <TabsTrigger value="voters">Voters</TabsTrigger>
@@ -967,7 +1364,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       </div>
                       <Button
                         type="submit"
-                        disabled={submitting}
+                        disabled={!walletVerified || submitting}
                         className="bg-slate-900 hover:bg-slate-800 text-white"
                       >
                         {submitting ? (
@@ -1178,7 +1575,9 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                       </div>
                       <Button
                         type="submit"
-                        disabled={submitting || !newCategory.name}
+                        disabled={
+                          !walletVerified || submitting || !newCategory.name
+                        }
                         className="bg-emerald-600 hover:bg-emerald-700"
                       >
                         {submitting ? (
@@ -1309,11 +1708,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             : "✗ Results will be hidden until voting ends"}
                         </p>
                       </div>
-                      <div className="flex gap-3">
+                      <div className="flex flex-wrap gap-3">
                         <Button
                           type="submit"
-                          disabled={submitting}
-                          className="bg-blue-600 hover:bg-blue-700"
+                          size="lg"
+                          disabled={!walletVerified || submitting}
+                          className="bg-blue-600 hover:bg-blue-700 flex-1 min-w-[160px]"
                         >
                           {submitting ? (
                             <>
@@ -1326,31 +1726,53 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         </Button>
                         <Button
                           type="button"
+                          size="lg"
                           variant="default"
-                          className="bg-emerald-600 hover:bg-emerald-700"
+                          className="bg-emerald-600 hover:bg-emerald-700 flex-1 min-w-[160px]"
                           onClick={handleStartElection}
                           disabled={
-                            submitting || adminData.electionStatus === "Active"
+                            !walletVerified ||
+                            submitting ||
+                            adminData.electionStatus === "Active"
                           }
                         >
-                          Start Election
+                          {submitting ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Starting...
+                            </>
+                          ) : (
+                            "Start Election"
+                          )}
                         </Button>
                         <Button
                           type="button"
+                          size="lg"
                           variant="outline"
+                          className="flex-1 min-w-[160px]"
                           onClick={handleEndElection}
                           disabled={
-                            submitting || adminData.electionStatus !== "Active"
+                            !walletVerified ||
+                            submitting ||
+                            adminData.electionStatus !== "Active"
                           }
                         >
-                          End Election
+                          {submitting ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Ending...
+                            </>
+                          ) : (
+                            "End Election"
+                          )}
                         </Button>
                         <Button
                           type="button"
+                          size="lg"
                           variant="destructive"
-                          className="bg-red-600 hover:bg-red-700"
+                          className="bg-red-600 hover:bg-red-700 flex-1 min-w-[160px]"
                           onClick={handleResetSystem}
-                          disabled={submitting}
+                          disabled={!walletVerified || submitting}
                         >
                           {submitting ? (
                             <>

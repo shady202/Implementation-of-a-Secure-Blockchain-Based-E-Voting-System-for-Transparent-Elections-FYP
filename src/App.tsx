@@ -18,7 +18,7 @@ import { ForgotPasswordPage } from "./components/ForgotPasswordPage";
 import { StudentDashboard } from "./components/StudentDashboard";
 import { ManageCategoriesPage } from "./components/ManageCategoriesPage";
 import { SystemSettingsPage } from "./components/SystemSettingsPage";
-import { ElectionsPage } from "./components/ElectionsPage";
+
 import { MyVotesPage } from "./components/MyVotesPage";
 import { VoteSuccessPage } from "./components/VoteSuccessPage";
 import { Toaster } from "sonner";
@@ -71,12 +71,8 @@ export default function App() {
       {currentPage === "forgot-password" && (
         <ForgotPasswordPage onNavigate={handleNavigate} />
       )}
-      {currentPage === "elections" && (
-        <ElectionsPage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "voter" && (
-        <StudentDashboard onNavigate={handleNavigate} />
-      )}
+      {currentPage === "elections" && <VotePage onNavigate={handleNavigate} />}
+      {currentPage === "voter" && <SettingsPage onNavigate={handleNavigate} />}
       {currentPage === "my-votes" && (
         <MyVotesPage onNavigate={handleNavigate} />
       )}

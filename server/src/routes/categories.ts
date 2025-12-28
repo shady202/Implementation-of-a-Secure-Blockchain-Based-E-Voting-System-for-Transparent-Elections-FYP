@@ -59,17 +59,18 @@ router.post("/", async (req: AuthRequest, res) => {
     console.log("  - description:", description);
     console.log("  - categoryId:", categoryId);
 
-    // Get active election if not provided
+    // Get latest election if not provided (changed from active to latest)
     let electionId = election_id;
     if (!electionId) {
-      const activeElection = await query(
-        "SELECT id FROM elections WHERE is_active = true ORDER BY created_at DESC LIMIT 1"
+      const latestElection = await query(
+        "SELECT id FROM elections ORDER BY created_at DESC LIMIT 1"
       );
 
-      if (activeElection.rows.length > 0) {
-        electionId = activeElection.rows[0].id;
+      if (latestElection.rows.length > 0) {
+        electionId = latestElection.rows[0].id;
+        console.log("  - Using latest election_id:", electionId);
       }
-      // If no active election, electionId stays null - database column is nullable
+      // If no election exists, electionId stays null - database column is nullable
     }
 
     // Save to database with blockchain reference
@@ -92,6 +93,13 @@ router.post("/", async (req: AuthRequest, res) => {
     );
 
     console.log("✅ Category saved to database:", result.rows[0].id);
+
+    // Log audit activity
+    await query(
+      `INSERT INTO audit_logs (action, description, created_at)
+       VALUES ('category_created', $1, NOW())`,
+      [`Category "${name}" added`]
+    );
 
     res.json({
       success: true,

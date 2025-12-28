@@ -1,15 +1,39 @@
 // Helper to parse blockchain errors into user-friendly messages
 export function parseBlockchainError(error: any): string {
-  const errorMessage = error?.message || error?.toString() || "Unknown error";
+  // Extract the message from various error formats
+  let errorMessage = "";
 
-  // Check for common blockchain errors
+  if (typeof error === "string") {
+    errorMessage = error;
+  } else if (error?.message) {
+    errorMessage = error.message;
+  } else if (error?.reason) {
+    errorMessage = error.reason;
+  } else if (error?.data?.message) {
+    errorMessage = error.data.message;
+  } else if (error?.error?.message) {
+    errorMessage = error.error.message;
+  } else {
+    errorMessage = error?.toString() || "Unknown error";
+  }
+
+  // Remove technical details and transaction hashes
+  errorMessage = errorMessage.replace(/0x[a-fA-F0-9]+/g, "[transaction]");
+  errorMessage = errorMessage.split("\n")[0]; // Take only first line
+
+  // Check for common blockchain errors with user-friendly messages
+  if (errorMessage.includes("End election first")) {
+    return "⚠️ The election must be ended before resetting the system. Please use the 'End Election' button first.";
+  }
+
   if (errorMessage.includes("Reset first")) {
     return "⚠️ An election already exists. Please end the current election and reset the system before creating a new one.";
   }
 
   if (
     errorMessage.includes("user rejected") ||
-    errorMessage.includes("User denied")
+    errorMessage.includes("User denied") ||
+    errorMessage.includes("user rejected transaction")
   ) {
     return "❌ Transaction cancelled. You rejected the MetaMask signature request.";
   }
@@ -44,7 +68,8 @@ export function parseBlockchainError(error: any): string {
 
   if (
     errorMessage.includes("network changed") ||
-    errorMessage.includes("chain")
+    errorMessage.includes("chain mismatch") ||
+    errorMessage.includes("wrong network")
   ) {
     return "🌐 Network error. Please make sure you're connected to the correct blockchain network.";
   }
@@ -53,6 +78,19 @@ export function parseBlockchainError(error: any): string {
     return "🔄 Transaction error. Please refresh the page and try again.";
   }
 
-  // Show full error for debugging
-  return `❌ ${errorMessage}`;
+  if (errorMessage.includes("CALL_EXCEPTION")) {
+    return "❌ Smart contract error. The operation could not be completed. Please try again.";
+  }
+
+  // Clean up the error message
+  const cleanMessage = errorMessage
+    .replace(/Error:/gi, "")
+    .replace(/execution reverted:/gi, "")
+    .replace(/VM Exception/gi, "")
+    .trim();
+
+  // Return cleaned message
+  return `❌ ${
+    cleanMessage || "An unexpected error occurred. Please try again."
+  }`;
 }

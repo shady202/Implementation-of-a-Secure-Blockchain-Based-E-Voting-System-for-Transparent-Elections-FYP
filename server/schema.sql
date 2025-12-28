@@ -14,12 +14,22 @@ CREATE TABLE IF NOT EXISTS voters (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id VARCHAR(255), -- For future session-based auth
   student_id VARCHAR(20) UNIQUE NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  password_hash TEXT,
   wallet_address VARCHAR(42) UNIQUE NOT NULL,
   department VARCHAR(255) NOT NULL,
   year_of_study INTEGER CHECK (year_of_study BETWEEN 1 AND 4),
   has_voted BOOLEAN DEFAULT FALSE,
   registration_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   voted_at TIMESTAMP WITH TIME ZONE,
+  
+  -- Email OTP verification fields
+  email_verified BOOLEAN DEFAULT FALSE,
+  email_otp_hash TEXT,
+  email_otp_expires_at TIMESTAMP WITH TIME ZONE,
+  otp_attempts INTEGER DEFAULT 0,
+  otp_last_sent_at TIMESTAMP WITH TIME ZONE,
+  
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
@@ -86,7 +96,34 @@ CREATE TABLE IF NOT EXISTS candidates (
 );
 
 -- =====================================================
--- 5. VOTES TABLE
+-- 5. VOTE HISTORY TABLE (Lifetime vote records)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS vote_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    voter_wallet_address VARCHAR(42) NOT NULL,
+    voter_student_id VARCHAR(50),
+    voter_name VARCHAR(255),
+    election_id UUID REFERENCES elections(id) ON DELETE SET NULL,
+    election_title VARCHAR(255) NOT NULL,
+    category_id UUID REFERENCES categories(id) ON DELETE SET NULL,
+    category_name VARCHAR(255) NOT NULL,
+    candidate_id UUID REFERENCES candidates(id) ON DELETE SET NULL,
+    candidate_name VARCHAR(255) NOT NULL,
+    candidate_party VARCHAR(100),
+    blockchain_tx_hash VARCHAR(255),
+    voted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    
+    CONSTRAINT valid_vote_history_wallet CHECK (voter_wallet_address ~ '^0x[a-fA-F0-9]{40}$')
+);
+
+-- Indexes for fast queries
+CREATE INDEX IF NOT EXISTS idx_vote_history_wallet ON vote_history(voter_wallet_address);
+CREATE INDEX IF NOT EXISTS idx_vote_history_election ON vote_history(election_id);
+CREATE INDEX IF NOT EXISTS idx_vote_history_voted_at ON vote_history(voted_at DESC);
+
+-- =====================================================
+-- 6. VOTES TABLE (Legacy - can be removed later)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS votes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -108,13 +145,18 @@ CREATE TABLE IF NOT EXISTS votes (
 CREATE TABLE IF NOT EXISTS admins (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id VARCHAR(255) NOT NULL UNIQUE,
+  email VARCHAR(255) UNIQUE,
+  password_hash VARCHAR(255),
+  wallet_address VARCHAR(42) UNIQUE,
   role VARCHAR(50) DEFAULT 'election_admin',
   permissions TEXT[],
   assigned_by VARCHAR(255),
   assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   is_active BOOLEAN DEFAULT TRUE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  
+  CONSTRAINT valid_admin_wallet_address CHECK (wallet_address IS NULL OR wallet_address ~ '^0x[a-fA-F0-9]{40}$')
 );
 
 -- =====================================================
