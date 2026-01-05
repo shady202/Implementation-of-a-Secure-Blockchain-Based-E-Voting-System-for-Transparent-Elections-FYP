@@ -1,6 +1,7 @@
-// API Base URL - now pointing to local Express backend
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+import { API_BASE_URL } from "./api-config";
+import { getSessionToken } from "./session";
+
+// API Base URL - now automatically detects correct IP!
 
 // Temporary: Simple user ID storage (will be replaced with session auth)
 let currentUserId: string | null = null;
@@ -19,20 +20,23 @@ export function getCurrentUserId(): string | null {
 }
 
 // ===============================
-// API request helper
+// API request helper with JWT authentication
 // ===============================
 async function apiRequest(endpoint: string, options: RequestInit = {}) {
   const url = `${API_BASE_URL}${endpoint}`;
-  const userId = getCurrentUserId();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(options.headers as Record<string, string>),
   };
 
-  // Add user ID header if available (temporary auth)
-  if (userId) {
-    headers["x-user-id"] = userId;
+  // Add JWT token to Authorization header if available
+  const token = getSessionToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+    console.log(`🔐 API Request to ${endpoint} with JWT token`);
+  } else {
+    console.log(`⚠️ API Request to ${endpoint} WITHOUT JWT token`);
   }
 
   const response = await fetch(url, {
@@ -246,6 +250,13 @@ export async function updateCandidateDb(
     method: "PUT",
     body: JSON.stringify(patch),
   });
+}
+
+export async function getCandidatesDb() {
+  const response = await apiRequest("/candidates", {
+    method: "GET",
+  });
+  return response.candidates || [];
 }
 
 export async function deleteCandidateDb(candidateId: string) {

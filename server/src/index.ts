@@ -1,7 +1,9 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { pool } from "./db";
+import cookieParser from "cookie-parser";
+import os from "os";
+import { pool, query } from "./db";
 
 // Import routes
 import electionsRouter from "./routes/elections";
@@ -18,25 +20,58 @@ import votesRouter from "./routes/votes";
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = Number(process.env.PORT) || 3001;
+
+// Security: Disable X-Powered-By header
+app.disable("x-powered-by");
+
+/**
+ * Get current network IP dynamically
+ * This detects whether you're on Wi-Fi or hotspot automatically
+ */
+function getNetworkIP(): string | null {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    const iface = interfaces[name];
+    if (!iface) continue;
+
+    for (const addr of iface) {
+      // Skip internal (localhost) and non-IPv4 addresses
+      if (addr.family === "IPv4" && !addr.internal) {
+        return addr.address;
+      }
+    }
+  }
+  return null;
+}
+
+const networkIP = getNetworkIP();
+console.log(`🌐 Detected Network IP: ${networkIP || "None (localhost only)"}`);
 
 // Middleware
 app.use(
   cors({
     origin: function (origin, callback) {
-      const allowedOrigins = [
-        "http://localhost:3003",
-        "http://localhost:3000",
-        "http://localhost:5173",
-      ];
-      // Allow requests with no origin (like mobile apps or curl)
+      // Allow requests with no origin (like mobile apps, curl, or Postman)
       if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) === -1) {
-        const msg =
-          "The CORS policy for this site does not allow access from the specified Origin.";
-        return callback(new Error(msg), false);
+
+      // Allow all localhost origins
+      if (
+        origin.startsWith("http://localhost:") ||
+        origin.startsWith("http://127.0.0.1:")
+      ) {
+        return callback(null, true);
       }
-      return callback(null, true);
+
+      // Allow current network IP (automatically detects Wi-Fi or hotspot)
+      if (networkIP && origin.startsWith(`http://${networkIP}:`)) {
+        return callback(null, true);
+      }
+
+      // Reject other origins
+      const msg =
+        "The CORS policy for this site does not allow access from the specified Origin.";
+      return callback(new Error(msg), false);
     },
     credentials: true,
   })
@@ -102,10 +137,14 @@ async function startServer() {
     await pool.query("SELECT NOW()");
     console.log("✅ Database connected successfully");
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
       console.log(`\n🚀 Server running on http://localhost:${PORT}`);
+      if (networkIP) {
+        console.log(`📱 Network access: http://${networkIP}:${PORT}`);
+        console.log(`📱 API endpoints: http://${networkIP}:${PORT}/api`);
+      }
       console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`🔌 API endpoints: http://localhost:${PORT}/api`);
+      console.log(`🔌 Local API: http://localhost:${PORT}/api`);
     });
   } catch (error) {
     console.error("❌ Failed to start server:", error);

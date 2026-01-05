@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Refresh Session Data</title>
+    <style>
+      body {
+          font-family: Arial, sans-serif;
+          max-width: 600px;
+          margin: 50px auto;
+          padding: 20px;
+          background: #f5f5f5;
+      }
+      .container {
+          background: white;
+          padding: 30px;
+          border-radius: 8px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+      h1 {
+          color: #333;
+          margin-bottom: 20px;
+      }
+      button {
+          background: #10b981;
+          color: white;
+          border: none;
+          padding: 12px 24px;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 16px;
+          margin-top: 20px;
+      }
+      button:hover {
+          background: #059669;
+      }
+      #status {
+          margin-top: 20px;
+          padding: 15px;
+          border-radius: 6px;
+          display: none;
+      }
+      .success {
+          background: #d1fae5;
+          color: #065f46;
+          border: 1px solid #10b981;
+      }
+      .error {
+          background: #fee2e2;
+          color: #991b1b;
+          border: 1px solid #ef4444;
+      }
+      .info {
+          background: #dbeafe;
+          color: #1e40af;
+          border: 1px solid: #3b82f6;
+      }
+      pre {
+          background: #f3f4f6;
+          padding: 10px;
+          border-radius: 4px;
+          overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔄 Refresh Your Session Data</h1>
+      <p>
+        Click the button below to refresh your session with the latest data from
+        the database.
+      </p>
+      <p><strong>This will update:</strong></p>
+      <ul>
+        <li>Faculty: School of Computing</li>
+        <li>Year of Study: First Year</li>
+        <li>All other user information</li>
+      </ul>
+      <button onclick="refreshSession()">Refresh Session Now</button>
+      <div id="status"></div>
+    </div>
+
+    <script>
+      async function refreshSession() {
+        const statusDiv = document.getElementById("status");
+        statusDiv.style.display = "block";
+        statusDiv.className = "info";
+        statusDiv.innerHTML = "⏳ Refreshing session data...";
+
+        try {
+          // Get current user from session
+          const currentUserStr = localStorage.getItem("currentUser");
+          if (!currentUserStr) {
+            throw new Error("No user session found. Please log in first.");
+          }
+
+          const currentUser = JSON.parse(currentUserStr);
+          const studentId = currentUser.studentId;
+
+          if (!studentId) {
+            throw new Error("Student ID not found in session.");
+          }
+
+          // Call refresh endpoint
+          const response = await fetch(
+            "http://localhost:3001/api/voters/refresh-session",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ studentId }),
+            }
+          );
+
+          const data = await response.json();
+
+          if (!response.ok || !data.success) {
+            throw new Error(data.error || "Failed to refresh session");
+          }
+
+          // Update session storage with new data
+          const updatedUser = data.user;
+
+          // Update both localStorage and encrypted session
+          localStorage.setItem("currentUser", JSON.stringify(updatedUser));
+
+          // Also update the encrypted session if it exists
+          const sessionKey = "userSession";
+          const encryptedSession = localStorage.getItem(sessionKey);
+          if (encryptedSession) {
+            // We need to update the encrypted session too
+            // For now, just show success and ask user to refresh page
+          }
+
+          statusDiv.className = "success";
+          statusDiv.innerHTML = `
+                    <strong>✅ Session refreshed successfully!</strong><br><br>
+                    <strong>Updated Data:</strong>
+                    <pre>${JSON.stringify(updatedUser, null, 2)}</pre>
+                    <br>
+                    <strong>Next Step:</strong> Close this page and refresh your main application page (press F5).
+                `;
+        } catch (error) {
+          statusDiv.className = "error";
+          statusDiv.innerHTML = `
+                    <strong>❌ Error:</strong> ${error.message}<br><br>
+                    Please make sure you're logged in and try again.
+                `;
+        }
+      }
+    </script>
+  </body>
+</html>

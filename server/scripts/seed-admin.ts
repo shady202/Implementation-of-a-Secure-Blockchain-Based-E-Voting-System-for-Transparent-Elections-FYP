@@ -8,10 +8,14 @@ export async function seedAdmin() {
   try {
     console.log("🔐 Seeding admin account...");
 
-    // Admin credentials
-    const adminEmail = "admin@apu.edu.my";
-    const adminPassword = "admin123";
-    const adminWallet = "0x30D336E13fac19C61c116431d44adbD98c386d5d";
+    // Admin credentials from environment variables
+    const adminEmail = process.env.ADMIN_EMAIL || "admin@apu.edu.my";
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const adminWallet = process.env.ADMIN_WALLET || "0x30D336E13fac19C61c116431d44adbD98c386d5d";
+
+    if (!adminPassword) {
+      throw new Error("ADMIN_PASSWORD environment variable is required");
+    }
 
     // Hash the password
     const passwordHash = await hashPassword(adminPassword);

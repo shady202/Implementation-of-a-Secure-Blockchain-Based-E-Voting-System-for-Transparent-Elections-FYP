@@ -153,7 +153,9 @@ export async function sendVoteConfirmationEmail(
   toEmail: string,
   voterName: string,
   votes: Array<{ categoryName: string; candidateName: string }>,
-  transactionHash: string
+  transactionHash: string,
+  electionTitle?: string,
+  electionDescription?: string
 ): Promise<void> {
   // Ensure transporter is initialized
   if (!transporter) {
@@ -184,6 +186,8 @@ export async function sendVoteConfirmationEmail(
         .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
         .content { background: #f9fafb; padding: 30px; border-radius: 0 0 10px 10px; }
         .vote-details { background: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981; }
+        .election-title { font-size: 18px; font-weight: bold; color: #0c4a6e; margin-bottom: 5px; }
+        .election-desc { font-size: 14px; color: #64748b; margin-bottom: 15px; padding-bottom: 15px; border-bottom: 2px solid #e2e8f0; }
         .tx-hash { font-family: monospace; font-size: 11px; word-break: break-all; background: #f3f4f6; padding: 10px; border-radius: 4px; margin: 10px 0; }
         .info { background: #dbeafe; border-left: 4px solid #3b82f6; padding: 15px; margin: 20px 0; border-radius: 4px; }
         .footer { text-align: center; color: #6b7280; font-size: 12px; margin-top: 30px; }
@@ -203,7 +207,12 @@ export async function sendVoteConfirmationEmail(
           <p>Thank you for participating in the election! Your vote has been securely recorded.</p>
           
           <div class="vote-details">
-            <h3>📋 Your Votes:</h3>
+            <h3>📋 ${electionTitle || "Your Votes"}</h3>
+            ${
+              electionDescription
+                ? `<div class="election-desc">${electionDescription}</div>`
+                : ""
+            }
             <ul>
               ${votesList}
             </ul>

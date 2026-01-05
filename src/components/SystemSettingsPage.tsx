@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./ui/card";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Switch } from "./ui/switch";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 import { ArrowLeft, Info, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -95,7 +106,12 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
         <div className="max-w-4xl mx-auto">
           {/* Back Button */}
           <div className="mb-6">
-            <Button variant="ghost" size="sm" className="gap-1" onClick={() => onNavigate('admin')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1"
+              onClick={() => onNavigate("admin")}
+            >
               <ArrowLeft className="h-4 w-4" />
               Back to Dashboard
             </Button>
@@ -104,7 +120,9 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
           {/* Page Header */}
           <div className="mb-8">
             <h1 className="text-slate-900 mb-2">System Settings</h1>
-            <p className="text-slate-600">Configure voting behavior and system access controls</p>
+            <p className="text-slate-600">
+              Configure voting behavior and system access controls
+            </p>
           </div>
 
           <div className="space-y-6">
@@ -112,20 +130,28 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
             <Card>
               <CardHeader>
                 <CardTitle>Voting Behavior Settings</CardTitle>
-                <CardDescription>Control how results are displayed to voters</CardDescription>
+                <CardDescription>
+                  Control how results are displayed to voters
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div className="space-y-1 flex-1">
                     <div className="flex items-center gap-2">
-                      <Label htmlFor="show-results">Show Results During Voting</Label>
+                      <Label htmlFor="show-results">
+                        Show Results During Voting
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-4 w-4 text-slate-400 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
-                            <p>If enabled, voters can see real-time results. If disabled, results remain hidden until the voting ends.</p>
+                            <p>
+                              If enabled, voters can see real-time results. If
+                              disabled, results remain hidden until the voting
+                              ends.
+                            </p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -146,8 +172,13 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
                 <div className="bg-blue-50 p-4 rounded-lg flex items-start gap-3">
                   <Info className="h-5 w-5 text-blue-600 mt-0.5" />
                   <div>
-                    <p className="text-sm text-blue-900">Changes to this setting will apply immediately.</p>
-                    <p className="text-sm text-blue-700 mt-1">This setting is blockchain-bound and affects the smart contract behavior.</p>
+                    <p className="text-sm text-blue-900">
+                      Changes to this setting will apply immediately.
+                    </p>
+                    <p className="text-sm text-blue-700 mt-1">
+                      This setting is blockchain-bound and affects the smart
+                      contract behavior.
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -157,20 +188,26 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
             <Card>
               <CardHeader>
                 <CardTitle>Website Traffic Limit</CardTitle>
-                <CardDescription>Control the maximum number of simultaneously allowed visitors</CardDescription>
+                <CardDescription>
+                  Control the maximum number of simultaneously allowed visitors
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <Label htmlFor="visitor-limit">Maximum Active Visitors Allowed</Label>
+                      <Label htmlFor="visitor-limit">
+                        Maximum Active Visitors Allowed
+                      </Label>
                       <TooltipProvider>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Info className="h-4 w-4 text-slate-400 cursor-help" />
                           </TooltipTrigger>
                           <TooltipContent className="max-w-xs">
-                            <p>This helps prevent overload during peak activity.</p>
+                            <p>
+                              This helps prevent overload during peak activity.
+                            </p>
                           </TooltipContent>
                         </Tooltip>
                       </TooltipProvider>
@@ -183,13 +220,19 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
                       onChange={(e) => handleVisitorLimitChange(e.target.value)}
                       placeholder="Enter max visitors (e.g., 3) or leave blank for unlimited."
                     />
-                    {inputError && <p className="text-sm text-red-600">{inputError}</p>}
+                    {inputError && (
+                      <p className="text-sm text-red-600">{inputError}</p>
+                    )}
                     <p className="text-sm text-slate-600">
-                      Limit how many users can access the system simultaneously. Extra users will see a capacity message.
+                      Limit how many users can access the system simultaneously.
+                      Extra users will see a capacity message.
                     </p>
                   </div>
 
-                  <Button onClick={handleSaveVisitorLimit} className="bg-blue-600 hover:bg-blue-700">
+                  <Button
+                    onClick={handleSaveVisitorLimit}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
                     Save Visitor Limit
                   </Button>
                 </div>
@@ -201,7 +244,9 @@ export function SystemSettingsPage({ onNavigate }: SystemSettingsPageProps) {
                   </div>
                   <p className="text-sm text-slate-600 ml-6">
                     {settings.visitorLimit
-                      ? `Current limit: ${settings.visitorLimit} visitor${settings.visitorLimit > 1 ? 's' : ''}`
+                      ? `Current limit: ${settings.visitorLimit} visitor${
+                          settings.visitorLimit > 1 ? "s" : ""
+                        }`
                       : "Unlimited access enabled"}
                   </p>
                 </div>

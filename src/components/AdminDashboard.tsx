@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { AuthGuard } from "./AuthGuard";
 import { UserNav } from "./UserNav";
 import { parseBlockchainError } from "../lib/errorParser";
+import { getApiBaseUrlWithoutSuffix } from "../lib/api-config";
 
 import {
   createElection,
@@ -26,6 +27,7 @@ import {
   endElection,
   resetSystem,
   getElectionInfo,
+  getElectionState,
   getAllCategories,
   createCategory,
   addCandidate,
@@ -67,7 +69,8 @@ import { Progress } from "./ui/progress";
 
 const apuLogo = "/apu-logo.png";
 
-const API_URL = "http://localhost:3001";
+// API URL - now automatically detects correct IP!
+const API_URL = getApiBaseUrlWithoutSuffix();
 
 // Helper to get current user ID for API calls
 const getCurrentUserId = () => localStorage.getItem("user_id");
@@ -117,6 +120,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   const [newElection, setNewElection] = useState({
     title: "",
+    description: "",
     startDate: "",
     endDate: "",
   });
@@ -133,6 +137,14 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
     const saved = localStorage.getItem("showResultsDuringVoting");
     return saved === "true";
   });
+  // Capacity testing settings
+  const [capacityTestingEnabled, setCapacityTestingEnabled] = useState(false);
+  const [maxConcurrentUsers, setMaxConcurrentUsers] = useState(10);
+  // Active users monitoring
+  const [activeUsersCount, setActiveUsersCount] = useState(0);
+  const [activeUsersList, setActiveUsersList] = useState<any[]>([]);
+  const [capacityStatus, setCapacityStatus] = useState<any>(null);
+  const [isAtCapacity, setIsAtCapacity] = useState(false);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [voters, setVoters] = useState<Voter[]>([]);
 
@@ -183,9 +195,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   // Fetch activities from backend
   const fetchActivities = async () => {
     try {
-      const response = await fetch(
-        "http://localhost:3001/api/admin/activities"
-      );
+      const response = await fetch(`${API_URL}/api/admin/activities`);
       const data = await response.json();
       setActivities(data.activities || []);
     } catch (error) {
@@ -197,12 +207,80 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   // Fetch voters from backend
   const fetchVoters = async () => {
     try {
-      const response = await fetch("http://localhost:3001/api/admin/voters");
+      const response = await fetch(`${API_URL}/api/admin/voters`);
       const data = await response.json();
       setVoters(data.voters || []);
     } catch (error) {
       console.error("Error fetching voters:", error);
       setVoters([]);
+    }
+  };
+
+  // Fetch election description from database
+  const fetchElectionDescription = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/elections/current`);
+      const data = await response.json();
+      if (data.election && data.election.description) {
+        return data.election.description;
+      }
+      return "";
+    } catch (error) {
+      console.error("Error fetching election description:", error);
+      return "";
+    }
+  };
+
+  // Fetch capacity testing settings
+  const fetchCapacitySettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/capacity-settings`);
+      const data = await response.json();
+      setCapacityTestingEnabled(data.capacityTestingEnabled || false);
+      setMaxConcurrentUsers(data.maxConcurrentUsers || 10);
+    } catch (error) {
+      console.error("Error fetching capacity settings:", error);
+    }
+  };
+
+  // Fetch active users count and status
+  const fetchActiveUsers = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/active-users`);
+      const data = await response.json();
+      if (data.success) {
+        setActiveUsersCount(data.activeCount);
+        setActiveUsersList(data.activeUsers || []);
+        setIsAtCapacity(data.isAtCapacity);
+        setCapacityStatus(data);
+      }
+    } catch (error) {
+      console.error("Error fetching active users:", error);
+    }
+  };
+
+  // Save capacity testing settings
+  const saveCapacitySettings = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/admin/capacity-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          capacityTestingEnabled,
+          maxConcurrentUsers,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to save capacity settings");
+      }
+
+      toast.success(
+        `Capacity testing ${capacityTestingEnabled ? "enabled" : "disabled"}`
+      );
+    } catch (error) {
+      console.error("Error saving capacity settings:", error);
+      toast.error("Failed to save capacity settings");
     }
   };
 
@@ -229,13 +307,35 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         );
       }
 
-      setElection(e);
       setCategories(cats as Category[]);
       setCandidates(allCandidates);
 
       // Fetch activities and voters from backend
       await fetchActivities();
       await fetchVoters();
+
+      // Fetch election description from database FIRST
+      const description = await fetchElectionDescription();
+
+      // Set newElection with all data including description
+      if (e && e.title) {
+        const startDate = e.startTime
+          ? new Date(e.startTime * 1000).toISOString().slice(0, 16)
+          : "";
+        const endDate = e.endTime
+          ? new Date(e.endTime * 1000).toISOString().slice(0, 16)
+          : "";
+
+        setNewElection({
+          title: e.title || "",
+          description: description || "",
+          startDate: startDate,
+          endDate: endDate,
+        });
+      }
+
+      // Set election LAST to avoid triggering useEffect before description is set
+      setElection(e);
     } catch (err: any) {
       console.error("Create category error:", err);
       const errorDetail =
@@ -261,9 +361,25 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       setAdminWalletAddress(expectedWalletAddress);
 
-      // Check if MetaMask is installed
-      if (typeof window === "undefined" || !(window as any).ethereum) {
-        toast.error("Please connect your wallet first", {
+      // SAFE MetaMask detection - check for MetaMask specifically
+      const ethereum = (window as any).ethereum;
+      if (typeof window === "undefined" || !ethereum) {
+        toast.error("Please install MetaMask", {
+          style: { background: "#fee2e2", color: "#dc2626" },
+        });
+        setWalletVerified(false);
+        return false;
+      }
+
+      // Prefer MetaMask if multiple wallets are installed
+      let provider = ethereum;
+      if (ethereum.providers?.length) {
+        provider =
+          ethereum.providers.find((p: any) => p.isMetaMask) || ethereum;
+      }
+
+      if (!provider) {
+        toast.error("MetaMask not found", {
           style: { background: "#fee2e2", color: "#dc2626" },
         });
         setWalletVerified(false);
@@ -271,7 +387,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       }
 
       // Use eth_requestAccounts which prompts unlock if needed
-      const accounts = await (window as any).ethereum.request({
+      const accounts = await provider.request({
         method: "eth_requestAccounts", // This will prompt unlock if locked!
       });
 
@@ -290,7 +406,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       // personal_sign REQUIRES private key access - fails if locked!
       try {
         const message = `Verify admin wallet: ${Date.now()}`;
-        await (window as any).ethereum.request({
+        await provider.request({
           method: "personal_sign",
           params: [message, connectedAddress],
         });
@@ -348,12 +464,26 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
   useEffect(() => {
     loadAll();
+    fetchCapacitySettings(); // Fetch capacity settings on mount
+    fetchActiveUsers(); // Fetch active users on mount
 
     // Initial wallet verification
     verifyAdminWallet();
 
-    // Listen for account changes
-    if ((window as any).ethereum) {
+    // Auto-refresh active users every 5 seconds
+    const interval = setInterval(() => {
+      fetchActiveUsers();
+    }, 5000);
+
+    // Set up auto-refresh polling every 10 seconds for more responsive updates
+    const refreshInterval = setInterval(() => {
+      fetchActivities();
+      fetchVoters();
+    }, 10000); // 10 seconds (reduced from 30)
+
+    // Listen for account changes - SAFE MetaMask detection
+    const ethereum = (window as any).ethereum;
+    if (ethereum && ethereum.isMetaMask) {
       const handleAccountsChanged = (accounts: string[]) => {
         if (accounts.length === 0) {
           setWalletConnected(false);
@@ -367,41 +497,61 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         }
       };
 
-      (window as any).ethereum.on("accountsChanged", handleAccountsChanged);
+      try {
+        ethereum.on("accountsChanged", handleAccountsChanged);
+      } catch (error) {
+        console.warn("Could not attach MetaMask listener:", error);
+      }
 
       return () => {
-        (window as any).ethereum.removeListener(
-          "accountsChanged",
-          handleAccountsChanged
-        );
+        clearInterval(interval);
+        clearInterval(refreshInterval); // Clear the refresh interval as well
+        try {
+          if (ethereum.removeListener) {
+            ethereum.removeListener("accountsChanged", handleAccountsChanged);
+          }
+        } catch (error) {
+          console.warn("Could not remove MetaMask listener:", error);
+        }
       };
     }
 
-    // Set up auto-refresh polling every 10 seconds for more responsive updates
-    const refreshInterval = setInterval(() => {
-      fetchActivities();
-      fetchVoters();
-    }, 10000); // 10 seconds (reduced from 30)
-
-    return () => clearInterval(refreshInterval);
+    // If MetaMask is not detected, still clean up the intervals
+    return () => {
+      clearInterval(interval);
+      clearInterval(refreshInterval);
+    };
   }, []);
 
   // Populate form fields when election data is loaded
   useEffect(() => {
     if (election && election.title) {
-      // Convert timestamps to date strings for input fields
+      // Convert timestamps to local date strings for input fields
+      // Use local timezone instead of UTC to prevent AM/PM conversion issues
+      const formatLocalDateTime = (timestamp: number) => {
+        const date = new Date(timestamp * 1000);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        return `${year}-${month}-${day}T${hours}:${minutes}`;
+      };
+
       const startDate = election.startTime
-        ? new Date(election.startTime * 1000).toISOString().slice(0, 16)
+        ? formatLocalDateTime(election.startTime)
         : "";
       const endDate = election.endTime
-        ? new Date(election.endTime * 1000).toISOString().slice(0, 16)
+        ? formatLocalDateTime(election.endTime)
         : "";
 
-      setNewElection({
+      // Use functional setState to preserve description if it exists
+      setNewElection((prev) => ({
         title: election.title || "",
+        description: prev.description, // Keep existing description from loadAll
         startDate: startDate,
         endDate: endDate,
-      });
+      }));
     }
   }, [election]);
 
@@ -416,6 +566,76 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       String(showResultsDuringVoting)
     );
   }, [showResultsDuringVoting]);
+
+  // Automatically end election when end time is reached
+  useEffect(() => {
+    const checkAndEndElection = async () => {
+      console.log("🔍 Auto-end check running...");
+      console.log("Election:", election);
+      console.log("Wallet verified:", walletVerified);
+      console.log("Submitting:", submitting);
+
+      // Only proceed if:
+      // 1. Election exists
+      // 2. Election is in Active state (state 2)
+      // 3. Wallet is verified (admin is connected)
+      // 4. Not currently submitting
+      if (!election || election.state !== 2 || !walletVerified || submitting) {
+        console.log("❌ Auto-end skipped - Reasons:");
+        console.log("  - No election?", !election);
+        console.log(
+          "  - State not 2?",
+          election?.state !== 2,
+          "(current state:",
+          election?.state,
+          ")"
+        );
+        console.log("  - Wallet not verified?", !walletVerified);
+        console.log("  - Currently submitting?", submitting);
+        return;
+      }
+
+      // Check if current time has passed the end time
+      const now = new Date();
+      const endTime = new Date(election.endTime * 1000);
+      console.log("✅ Conditions met! Checking time...");
+      console.log("Current time:", now);
+      console.log("End time:", endTime);
+      console.log("Time expired?", now > endTime);
+
+      if (now > endTime) {
+        console.log(
+          "⏰ Election time expired, automatically ending election..."
+        );
+        toast.info(
+          "Election time has expired. Automatically ending election...",
+          {
+            duration: 3000,
+          }
+        );
+
+        try {
+          await handleEndElection();
+          toast.success("✅ Election automatically ended due to time expiry!");
+        } catch (error: any) {
+          console.error("Failed to auto-end election:", error);
+          toast.error("Failed to auto-end election. Please try manually.");
+        }
+      }
+    };
+
+    // Run check immediately on mount
+    checkAndEndElection();
+
+    // Then run every 10 seconds for continuous monitoring
+    const intervalId = setInterval(checkAndEndElection, 10000);
+
+    // Cleanup on unmount
+    return () => {
+      console.log("🛑 Clearing auto-end polling timer");
+      clearInterval(intervalId);
+    };
+  }, [election, walletVerified, submitting]);
 
   const handleCreateElection = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -439,6 +659,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         },
         body: JSON.stringify({
           title: newElection.title,
+          description: newElection.description,
           startDate: newElection.startDate,
           endDate: newElection.endDate,
           showResultsDuringVoting: showResultsDuringVoting,
@@ -475,21 +696,99 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
     try {
       setSubmitting(true);
-      await startElection();
 
-      // Log activity to database
-      await fetch(`${API_URL}/api/admin/log-activity`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "election_started",
-          description: "Election started",
-        }),
-      });
+      // Step 1: Start election on blockchain
+      console.log("🔗 Starting election on blockchain...");
+      await startElection();
+      console.log("✅ Blockchain updated successfully");
+
+      // Step 2: Sync to database with retry logic
+      console.log("💾 Syncing to database...");
+      let dbSyncSuccess = false;
+      let retries = 3;
+
+      while (retries > 0 && !dbSyncSuccess) {
+        try {
+          const dbResponse = await fetch(`${API_URL}/api/elections/start`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (!dbResponse.ok) {
+            const errorText = await dbResponse.text();
+            throw new Error(`Database sync failed: ${errorText}`);
+          }
+
+          const result = await dbResponse.json();
+          console.log("✅ Database synced:", result);
+          dbSyncSuccess = true;
+        } catch (dbErr: any) {
+          retries--;
+          console.warn(
+            `⚠️ Database sync attempt failed (${3 - retries}/3):`,
+            dbErr.message
+          );
+
+          if (retries > 0) {
+            console.log(`🔄 Retrying in 1 second...`);
+            await new Promise((r) => setTimeout(r, 1000));
+          } else {
+            console.error("❌ All database sync retries failed");
+            toast.error(
+              "⚠️ Election started on blockchain but database sync failed. Some devices may show incorrect state.",
+              { duration: 8000 }
+            );
+          }
+        }
+      }
+
+      // Step 3: Verify sync by checking both sources
+      if (dbSyncSuccess) {
+        try {
+          console.log("🔍 Verifying sync...");
+          const [blockchainState, dbElectionResponse] = await Promise.all([
+            getElectionState(),
+            fetch(`${API_URL}/api/elections/latest`).then((r) => r.json()),
+          ]);
+
+          const blockchainActive = blockchainState.isActive;
+          const dbActive = dbElectionResponse.election?.isActive || false;
+
+          if (blockchainActive !== dbActive) {
+            console.error("❌ Sync verification failed:", {
+              blockchain: blockchainActive,
+              database: dbActive,
+            });
+            toast.warning(
+              "⚠️ Blockchain and database may be out of sync. Please refresh and verify.",
+              { duration: 6000 }
+            );
+          } else {
+            console.log("✅ Sync verified - both sources match");
+          }
+        } catch (verifyErr) {
+          console.warn("⚠️ Could not verify sync:", verifyErr);
+        }
+      }
+
+      // Step 4: Log activity to database
+      try {
+        await fetch(`${API_URL}/api/admin/log-activity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "election_started",
+            description: "Election started",
+          }),
+        });
+      } catch (logErr) {
+        console.warn("⚠️ Failed to log activity:", logErr);
+      }
 
       toast.success("Election started successfully!");
       await loadAll();
     } catch (err: any) {
+      console.error("Failed to start election:", err);
       toast.error(parseBlockchainError(err));
     } finally {
       setSubmitting(false);
@@ -506,21 +805,100 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
     try {
       setSubmitting(true);
+
+      // Step 1: End election on blockchain
+      console.log("🔗 Ending election on blockchain...");
       await endElection();
+      console.log("✅ Blockchain updated successfully");
 
-      // Log activity to database
-      await fetch(`${API_URL}/api/admin/log-activity`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "election_ended",
-          description: "Election ended",
-        }),
-      });
+      // Step 2: Sync to database with retry logic
+      console.log("💾 Syncing to database...");
+      let dbSyncSuccess = false;
+      let retries = 3;
 
-      toast.success("Election ended successfully!");
+      while (retries > 0 && !dbSyncSuccess) {
+        try {
+          const dbResponse = await fetch(`${API_URL}/api/elections/end`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (!dbResponse.ok) {
+            const errorText = await dbResponse.text();
+            throw new Error(`Database sync failed: ${errorText}`);
+          }
+
+          const result = await dbResponse.json();
+          console.log("✅ Database synced:", result);
+          dbSyncSuccess = true;
+        } catch (dbErr: any) {
+          retries--;
+          console.warn(
+            `⚠️ Database sync attempt failed (${3 - retries}/3):`,
+            dbErr.message
+          );
+
+          if (retries > 0) {
+            console.log(`🔄 Retrying in 1 second...`);
+            await new Promise((r) => setTimeout(r, 1000));
+          } else {
+            console.error("❌ All database sync retries failed");
+            toast.error(
+              "⚠️ Election ended on blockchain but database sync failed. Some devices may show incorrect state.",
+              { duration: 8000 }
+            );
+          }
+        }
+      }
+
+      // Step 3: Verify sync by checking both sources
+      if (dbSyncSuccess) {
+        try {
+          console.log("🔍 Verifying sync...");
+          const [blockchainState, dbElectionResponse] = await Promise.all([
+            getElectionState(),
+            fetch(`${API_URL}/api/elections/latest`).then((r) => r.json()),
+          ]);
+
+          const blockchainEnded = blockchainState.hasEnded;
+          const dbActive = dbElectionResponse.election?.isActive || false;
+
+          // When ended, blockchain should show hasEnded=true and db should show isActive=false
+          if (blockchainEnded && dbActive) {
+            console.error("❌ Sync verification failed:", {
+              blockchain: "ended",
+              database: "still active",
+            });
+            toast.warning(
+              "⚠️ Blockchain and database may be out of sync. Please refresh and verify.",
+              { duration: 6000 }
+            );
+          } else {
+            console.log("✅ Sync verified - both sources match");
+          }
+        } catch (verifyErr) {
+          console.warn("⚠️ Could not verify sync:", verifyErr);
+        }
+      }
+
+      // Step 4: Log activity to database
+      try {
+        await fetch(`${API_URL}/api/admin/log-activity`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "election_ended",
+            description: "Election ended",
+          }),
+        });
+      } catch (logErr) {
+        console.warn("⚠️ Failed to log activity:", logErr);
+      }
+
+      toast.success("✅ Election ended successfully!");
       await loadAll();
     } catch (err: any) {
+      console.error("❌ Failed to end election:", err);
       toast.error(parseBlockchainError(err));
     } finally {
       setSubmitting(false);
@@ -598,44 +976,48 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       console.log(`Current election state: ${currentState}`);
 
-      // Always try to end the election before reset (except if no election exists)
-      // The smart contract might require this even if UI shows it as ended
+      // CRITICAL: Always try to end the election before reset
+      // The blockchain state might not match the UI state, so we force-end it
       if (currentState !== 0) {
         if (currentState === 1) {
           // If in Setup Phase (Created), start first
           try {
-            toast.info("Starting election...");
+            toast.info("Starting election before ending...");
             await startElection();
-            toast.success("Election started!");
+            console.log("✅ Election started!");
           } catch (err: any) {
             console.warn("Election might already be started:", err);
           }
         }
 
-        // Always try to end the election (even if state shows as 3)
-        // This ensures the blockchain contract is satisfied
+        // ALWAYS try to end the election, even if UI shows state 3
+        // This ensures blockchain state is properly synchronized
         try {
-          toast.info("Ensuring election is ended...");
+          toast.info("Ending election on blockchain...");
           await endElection();
-          // Success message shown by endElection() function
+          console.log("✅ Election ended on blockchain!");
+          toast.success("Election ended successfully!");
         } catch (err: any) {
           const errMsg = err?.message || "";
-          // Ignore error if election is already ended
+          // Only ignore if it's already ended, otherwise throw
           if (
             errMsg.includes("already ended") ||
-            errMsg.includes("Election ended")
+            errMsg.includes("Election ended") ||
+            errMsg.includes("Not active")
           ) {
-            console.log("Election was already ended, continuing with reset...");
-            toast.info("Election confirmed as ended. Proceeding with reset...");
+            console.log(
+              "Election was already ended on blockchain, continuing with reset..."
+            );
+            toast.info("Election already ended. Proceeding with reset...");
           } else {
-            // Re-throw other errors
+            // If it's a different error, throw it
+            console.error("Failed to end election:", err);
             throw err;
           }
         }
       } else {
         toast.info("No active election. Proceeding with system reset...");
       }
-      // If already Ended (state=3) or None (state=0), just reset
 
       console.log("✅ Election ended. Starting reset process...");
 
@@ -674,7 +1056,12 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       await loadAll();
 
       // Clear the form fields for a fresh start
-      setNewElection({ title: "", startDate: "", endDate: "" });
+      setNewElection({
+        title: "",
+        description: "",
+        startDate: "",
+        endDate: "",
+      });
       setShowResultsDuringVoting(false);
       localStorage.removeItem("showResultsDuringVoting");
 
@@ -712,7 +1099,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       // Step 2: Sync to PostgreSQL database
       const userId = getCurrentUserId();
-      const response = await fetch("http://localhost:3001/api/categories", {
+      const response = await fetch(`${API_URL}/api/categories`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -783,7 +1170,31 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       const tx = await contract.deactivateCategory(categoryId);
       await tx.wait();
 
-      toast.success("Category deleted!");
+      toast.success("Category deactivated on blockchain!");
+
+      // Also delete from database to prevent duplicate key errors
+      toast.info("Removing from database...");
+      const userId = getCurrentUserId();
+      const dbResponse = await fetch(
+        `${API_URL}/api/categories/${categoryId}`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            ...(userId ? { "x-user-id": userId } : {}),
+          },
+        }
+      );
+
+      if (!dbResponse.ok) {
+        console.warn("Database deletion failed, but blockchain succeeded");
+        toast.warning(
+          "Category removed from blockchain but database cleanup failed"
+        );
+      } else {
+        toast.success("Category deleted completely!");
+      }
+
       await loadAll();
     } catch (err: any) {
       console.error("Delete error:", err);
@@ -825,7 +1236,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       // Step 2: Sync to PostgreSQL database
       const userId = getCurrentUserId();
-      const response = await fetch("http://localhost:3001/api/candidates", {
+      const response = await fetch(`${API_URL}/api/candidates`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -851,7 +1262,7 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
         category: "",
         contractId: "",
       });
-      toast.success("Candidate added and saved to database!");
+      toast.success("Candidate saved to blockchain and database!");
       await loadAll();
     } catch (err: any) {
       toast.error(parseBlockchainError(err));
@@ -1205,8 +1616,8 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
             >
               <TabsList className="grid grid-cols-5 mb-8 h-14 w-full p-2">
                 <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-                <TabsTrigger value="candidates">Candidates</TabsTrigger>
                 <TabsTrigger value="voters">Voters</TabsTrigger>
+                <TabsTrigger value="candidates">Candidates</TabsTrigger>
                 <TabsTrigger value="categories">Categories</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
               </TabsList>
@@ -1488,17 +1899,21 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           adminData.voters.map((voter) => (
                             <TableRow key={voter.id}>
                               <TableCell className="text-slate-900 font-mono">
-                                {/* Mask Student ID: TP123456 → TP123*** */}
-                                {voter.studentId.substring(
-                                  0,
-                                  voter.studentId.length - 3
-                                )}
-                                ***
+                                {/* Mask Student ID: TP123456 → TP***456 */}
+                                TP***{voter.studentId.slice(-3)}
                               </TableCell>
                               <TableCell className="font-mono text-slate-600">
                                 {/* Mask Wallet Address: 0x1234567890abcdef → 0x123456...cdef */}
-                                {voter.walletAddress.substring(0, 8)}...
-                                {voter.walletAddress.slice(-4)}
+                                {voter.walletAddress ? (
+                                  <>
+                                    {voter.walletAddress.substring(0, 8)}...
+                                    {voter.walletAddress.slice(-4)}
+                                  </>
+                                ) : (
+                                  <span className="text-gray-400 italic">
+                                    Not registered
+                                  </span>
+                                )}
                               </TableCell>
                               <TableCell className="text-slate-600">
                                 {voter.department}
@@ -1659,6 +2074,24 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           required
                         />
                       </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="description">
+                          Description{" "}
+                          <span className="text-slate-500">(Optional)</span>
+                        </Label>
+                        <textarea
+                          id="description"
+                          value={newElection.description}
+                          onChange={(e) =>
+                            setNewElection({
+                              ...newElection,
+                              description: e.target.value,
+                            })
+                          }
+                          placeholder="Describe the purpose of this election (e.g., 'Vote for your student representatives for academic year 2024-2025')"
+                          className="file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex min-h-[80px] w-full min-w-0 rounded-md border px-3 py-2 text-base bg-input-background transition-[color,box-shadow] outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] resize-y"
+                        />
+                      </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="startDate">Start Date</Label>
@@ -1707,6 +2140,59 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             ? "✓ Voters can see live results while voting is active"
                             : "✗ Results will be hidden until voting ends"}
                         </p>
+                      </div>
+                      {/* Capacity Testing Toggle */}
+                      <div className="space-y-4 border-t pt-4">
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label htmlFor="capacityTesting">
+                              Enable Capacity Testing Mode
+                            </Label>
+                            <Switch
+                              id="capacityTesting"
+                              checked={capacityTestingEnabled}
+                              onCheckedChange={(checked) => {
+                                setCapacityTestingEnabled(checked);
+                                saveCapacitySettings();
+                              }}
+                            />
+                          </div>
+                          <p className="text-sm text-slate-500">
+                            {capacityTestingEnabled
+                              ? "✓ Capacity limits are enforced for load testing"
+                              : "✗ Normal login flow (no capacity restrictions)"}
+                          </p>
+                        </div>
+                        {capacityTestingEnabled && (
+                          <div className="space-y-2">
+                            <Label htmlFor="maxUsers">
+                              Maximum Concurrent Users
+                            </Label>
+                            <div className="flex items-center gap-3">
+                              <Input
+                                id="maxUsers"
+                                type="number"
+                                min="1"
+                                max="1000"
+                                value={maxConcurrentUsers}
+                                onChange={(e) =>
+                                  setMaxConcurrentUsers(
+                                    parseInt(e.target.value) || 10
+                                  )
+                                }
+                                onBlur={saveCapacitySettings}
+                                className="w-32"
+                              />
+                              <span className="text-sm text-slate-500">
+                                users
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              When this limit is reached, new logins will be
+                              blocked with a "capacity reached" message.
+                            </p>
+                          </div>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-3">
                         <Button
@@ -1787,6 +2273,227 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           )}
                         </Button>
                       </div>
+
+                      {/* Active Users Monitoring Panel */}
+                      {capacityTestingEnabled && (
+                        <div className="mt-6 space-y-4 border-t pt-6">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-semibold text-slate-900">
+                              Active Users Monitoring
+                            </h3>
+                            <Badge
+                              variant={isAtCapacity ? "destructive" : "default"}
+                              className={
+                                isAtCapacity ? "bg-red-500" : "bg-emerald-500"
+                              }
+                            >
+                              {isAtCapacity ? "At Capacity" : "Available"}
+                            </Badge>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            {/* Active Users Count */}
+                            <Card>
+                              <CardHeader className="pb-3">
+                                <CardDescription>Active Users</CardDescription>
+                                <CardTitle className="text-3xl">
+                                  {activeUsersCount}/{maxConcurrentUsers}
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <Progress
+                                  value={
+                                    (activeUsersCount / maxConcurrentUsers) *
+                                    100
+                                  }
+                                  className="h-2"
+                                />
+                              </CardContent>
+                            </Card>
+
+                            {/* Utilization Percentage */}
+                            <Card>
+                              <CardHeader className="pb-3">
+                                <CardDescription>Utilization</CardDescription>
+                                <CardTitle className="text-3xl">
+                                  {maxConcurrentUsers > 0
+                                    ? Math.round(
+                                        (activeUsersCount /
+                                          maxConcurrentUsers) *
+                                          100
+                                      )
+                                    : 0}
+                                  %
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <p className="text-sm text-slate-500">
+                                  {activeUsersCount} of {maxConcurrentUsers}{" "}
+                                  slots filled
+                                </p>
+                              </CardContent>
+                            </Card>
+
+                            {/* Available Slots */}
+                            <Card>
+                              <CardHeader className="pb-3">
+                                <CardDescription>
+                                  Available Slots
+                                </CardDescription>
+                                <CardTitle className="text-3xl">
+                                  {Math.max(
+                                    0,
+                                    maxConcurrentUsers - activeUsersCount
+                                  )}
+                                </CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <p className="text-sm text-slate-500">
+                                  {Math.max(
+                                    0,
+                                    maxConcurrentUsers - activeUsersCount
+                                  ) > 0
+                                    ? `${Math.max(
+                                        0,
+                                        maxConcurrentUsers - activeUsersCount
+                                      )} slot${
+                                        Math.max(
+                                          0,
+                                          maxConcurrentUsers - activeUsersCount
+                                        ) === 1
+                                          ? ""
+                                          : "s"
+                                      } available`
+                                    : "At maximum capacity"}
+                                </p>
+                                {isAtCapacity && (
+                                  <p className="text-xs text-red-600 mt-1">
+                                    New logins are currently blocked
+                                  </p>
+                                )}
+                              </CardContent>
+                            </Card>
+                          </div>
+
+                          {/* Active Users List */}
+                          {activeUsersList && activeUsersList.length > 0 && (
+                            <Card>
+                              <CardHeader>
+                                <CardTitle>Currently Logged In</CardTitle>
+                                <CardDescription>
+                                  Active sessions (logged in within last 15
+                                  minutes)
+                                </CardDescription>
+                              </CardHeader>
+                              <CardContent>
+                                <Table>
+                                  <TableHeader>
+                                    <TableRow>
+                                      <TableHead>Student ID</TableHead>
+                                      <TableHead>Name</TableHead>
+                                      <TableHead>Email</TableHead>
+                                      <TableHead>Last Login</TableHead>
+                                      <TableHead>Status</TableHead>
+                                    </TableRow>
+                                  </TableHeader>
+                                  <TableBody>
+                                    {activeUsersList.map((user, index) => {
+                                      // Privacy masking functions
+                                      const maskStudentId = (id: string) => {
+                                        if (!id || id.length < 3)
+                                          return "TP***";
+                                        // Show TP prefix + stars + last 3 digits
+                                        return "TP***" + id.slice(-3);
+                                      };
+
+                                      const maskName = (fullName: string) => {
+                                        if (!fullName) return "N/A";
+                                        const parts = fullName
+                                          .trim()
+                                          .split(" ");
+                                        if (parts.length === 1) {
+                                          return (
+                                            parts[0].charAt(0).toUpperCase() +
+                                            "."
+                                          );
+                                        }
+                                        const firstInitial = parts[0]
+                                          .charAt(0)
+                                          .toUpperCase();
+                                        const lastInitial = parts[
+                                          parts.length - 1
+                                        ]
+                                          .charAt(0)
+                                          .toUpperCase();
+                                        return `${firstInitial}. ${lastInitial}.`;
+                                      };
+
+                                      const maskEmail = (email: string) => {
+                                        if (!email) return "N/A";
+                                        const [localPart, domain] =
+                                          email.split("@");
+                                        if (!domain) return "TP***";
+                                        // Show TP prefix + stars + last 3 digits
+                                        if (localPart.length < 3)
+                                          return "TP***@" + domain;
+                                        const masked =
+                                          "TP***" + localPart.slice(-3);
+                                        return `${masked}@${domain}`;
+                                      };
+
+                                      return (
+                                        <TableRow key={index}>
+                                          <TableCell>
+                                            {maskStudentId(user.studentId)}
+                                          </TableCell>
+                                          <TableCell>
+                                            {maskName(user.fullName)}
+                                          </TableCell>
+                                          <TableCell>
+                                            {maskEmail(user.email)}
+                                          </TableCell>
+                                          <TableCell>
+                                            {user.lastLoginAt
+                                              ? new Date(
+                                                  user.lastLoginAt
+                                                ).toLocaleString()
+                                              : "N/A"}
+                                          </TableCell>
+                                          <TableCell>
+                                            <Badge
+                                              variant={
+                                                user.hasVoted
+                                                  ? "default"
+                                                  : "secondary"
+                                              }
+                                            >
+                                              {user.hasVoted
+                                                ? "Voted"
+                                                : "Not Voted"}
+                                            </Badge>
+                                          </TableCell>
+                                        </TableRow>
+                                      );
+                                    })}
+                                  </TableBody>
+                                </Table>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {/* No Active Users Message */}
+                          {(!activeUsersList ||
+                            activeUsersList.length === 0) && (
+                            <Card>
+                              <CardContent className="pt-6">
+                                <p className="text-center text-slate-500">
+                                  No active users at the moment
+                                </p>
+                              </CardContent>
+                            </Card>
+                          )}
+                        </div>
+                      )}
                     </form>
                   </CardContent>
                 </Card>

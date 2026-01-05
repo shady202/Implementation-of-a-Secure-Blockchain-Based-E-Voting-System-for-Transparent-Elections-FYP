@@ -1,47 +1,87 @@
 import { Request, Response, NextFunction } from "express";
 import { query } from "../db";
+import { verifyToken, extractTokenFromHeader } from "../utils/jwt";
 
 // Extend Express Request to include user info
 export interface AuthRequest extends Request {
   user?: {
     id: string;
     email?: string;
+    studentId?: string;
     isAdmin?: boolean;
   };
 }
 
-// Temporary: Simple auth middleware (we'll replace with session auth later)
-// For now, we'll accept any request and optionally check for a user_id header
+/**
+ * Middleware to require JWT authentication
+ */
 export async function requireAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    // Temporary: Get user_id from header (for testing)
-    const userId = req.headers["x-user-id"] as string;
+    // Extract token from Authorization header
+    const token = extractTokenFromHeader(req.headers.authorization);
 
-    if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required. No token provided.",
+      });
     }
 
-    req.user = { id: userId };
+    // Verify and decode the token
+    const decoded = verifyToken(token);
+
+    // Attach user info to request
+    req.user = {
+      id: decoded.userId,
+      email: decoded.email,
+      studentId: decoded.studentId,
+      isAdmin: decoded.isAdmin || false,
+    };
+
     next();
-  } catch (error) {
-    console.error("Auth error:", error);
-    res.status(401).json({ error: "Invalid authentication" });
+  } catch (error: any) {
+    console.error("Auth error:", error.message);
+    return res.status(401).json({
+      success: false,
+      error: error.message || "Invalid authentication",
+    });
   }
 }
 
-// Middleware to check if user is admin
+/**
+ * Middleware to check if user is admin
+ */
 export async function requireAdmin(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
   try {
-    if (!req.user?.id) {
-      return res.status(401).json({ error: "Authentication required" });
+    // First, ensure user is authenticated
+    const token = extractTokenFromHeader(req.headers.authorization);
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "Authentication required",
+      });
+    }
+
+    // Verify token
+    const decoded = verifyToken(token);
+
+    // Attach user info if not already set
+    if (!req.user) {
+      req.user = {
+        id: decoded.userId,
+        email: decoded.email,
+        studentId: decoded.studentId,
+        isAdmin: decoded.isAdmin || false,
+      };
     }
 
     // Check if user is admin in database
@@ -51,26 +91,47 @@ export async function requireAdmin(
     );
 
     if (result.rows.length === 0) {
-      return res.status(403).json({ error: "Admin access required" });
+      return res.status(403).json({
+        success: false,
+        error: "Admin access required",
+      });
     }
 
     req.user.isAdmin = true;
     next();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Admin check error:", error);
-    res.status(500).json({ error: "Failed to verify admin status" });
+    return res.status(error.message?.includes("Token") ? 401 : 500).json({
+      success: false,
+      error: error.message || "Failed to verify admin status",
+    });
   }
 }
 
-// Optional auth - doesn't fail if no user
+/**
+ * Optional auth - doesn't fail if no user
+ */
 export function optionalAuth(
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ) {
-  const userId = req.headers["x-user-id"] as string;
-  if (userId) {
-    req.user = { id: userId };
+  try {
+    const token = extractTokenFromHeader(req.headers.authorization);
+
+    if (token) {
+      const decoded = verifyToken(token);
+      req.user = {
+        id: decoded.userId,
+        email: decoded.email,
+        studentId: decoded.studentId,
+        isAdmin: decoded.isAdmin || false,
+      };
+    }
+  } catch (error) {
+    // Silently fail for optional auth
+    console.log("Optional auth failed:", error);
   }
+
   next();
 }

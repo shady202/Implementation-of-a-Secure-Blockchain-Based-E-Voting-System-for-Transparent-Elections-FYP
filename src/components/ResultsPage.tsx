@@ -48,6 +48,7 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
   const [activeCategory, setActiveCategory] = useState("");
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [electionTitle, setElectionTitle] = useState("APU Election");
+  const [electionDescription, setElectionDescription] = useState("");
   const [showResults, setShowResults] = useState(true);
   const [electionActive, setElectionActive] = useState(false);
 
@@ -127,6 +128,22 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
       setCandidates(allCandidates);
 
       setElectionTitle(electionData.title || "APU Election");
+
+      // Fetch election description from database (not on blockchain)
+      try {
+        const API_URL = (
+          import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+        ).replace(/\/api$/, "");
+        const electionResponse = await fetch(
+          `${API_URL}/api/elections/current`
+        );
+        const dbElectionData = await electionResponse.json();
+        if (dbElectionData.election?.description) {
+          setElectionDescription(dbElectionData.election.description);
+        }
+      } catch (err) {
+        console.error("Failed to fetch election description:", err);
+      }
 
       // Check if election is currently active
       setElectionActive(electionData.isActive);
@@ -238,6 +255,9 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-slate-900 mb-2">{electionTitle}</h1>
+                {electionDescription && (
+                  <p className="text-slate-600 mb-3">{electionDescription}</p>
+                )}
                 <div className="flex items-center gap-4 text-slate-600">
                   <span className="flex items-center gap-2">
                     <Clock className="h-4 w-4" />

@@ -16,9 +16,10 @@ CREATE TABLE IF NOT EXISTS voters (
   student_id VARCHAR(20) UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   password_hash TEXT,
-  wallet_address VARCHAR(42) UNIQUE NOT NULL,
+  full_name VARCHAR(255), -- Voter's full name
+  wallet_address VARCHAR(42) UNIQUE, -- NULL allowed during registration, added later
   department VARCHAR(255) NOT NULL,
-  year_of_study INTEGER CHECK (year_of_study BETWEEN 1 AND 4),
+  year_of_study INTEGER CHECK (year_of_study BETWEEN 1 AND 5), -- 1-4: Undergrad, 5: Postgrad
   has_voted BOOLEAN DEFAULT FALSE,
   registration_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   voted_at TIMESTAMP WITH TIME ZONE,
@@ -33,7 +34,7 @@ CREATE TABLE IF NOT EXISTS voters (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
-  CONSTRAINT valid_wallet_address CHECK (wallet_address ~ '^0x[a-fA-F0-9]{40}$')
+  CONSTRAINT valid_wallet_address CHECK (wallet_address IS NULL OR wallet_address ~ '^0x[a-fA-F0-9]{40}$')
 );
 
 -- =====================================================
@@ -189,6 +190,20 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 
 -- =====================================================
+-- 9. SESSIONS TABLE (For JWT Authentication)
+-- =====================================================
+CREATE TABLE IF NOT EXISTS sessions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id VARCHAR(255) NOT NULL,
+  session_token TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  ip_address INET,
+  user_agent TEXT
+);
+
+-- =====================================================
 -- INDEXES FOR PERFORMANCE
 -- =====================================================
 
@@ -196,6 +211,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
 CREATE INDEX IF NOT EXISTS idx_voters_student_id ON voters(student_id);
 CREATE INDEX IF NOT EXISTS idx_voters_wallet_address ON voters(wallet_address);
 CREATE INDEX IF NOT EXISTS idx_voters_has_voted ON voters(has_voted);
+CREATE INDEX IF NOT EXISTS idx_voters_email ON voters(email);
 
 -- Elections table indexes
 CREATE INDEX IF NOT EXISTS idx_elections_is_active ON elections(is_active);
@@ -221,10 +237,16 @@ CREATE INDEX IF NOT EXISTS idx_votes_blockchain_tx_hash ON votes(blockchain_tx_h
 -- Admins table indexes
 CREATE INDEX IF NOT EXISTS idx_admins_user_id ON admins(user_id);
 CREATE INDEX IF NOT EXISTS idx_admins_is_active ON admins(is_active);
+CREATE INDEX IF NOT EXISTS idx_admins_email ON admins(email);
 
 -- Audit logs indexes
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+
+-- Sessions table indexes
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(session_token);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 
 -- =====================================================
 -- TRIGGERS & FUNCTIONS
@@ -285,6 +307,27 @@ VALUES (
   NOW() + INTERVAL '30 days',
   true
 ) ON CONFLICT DO NOTHING;
+
+-- Create default admin user
+-- Email: admin@apu.edu.my
+-- Password: Admin@123 (change after first login!)
+INSERT INTO admins (
+  user_id,
+  email,
+  password_hash,
+  wallet_address,
+  role,
+  permissions,
+  is_active
+) VALUES (
+  'admin001',
+  'admin@apu.edu.my',
+  '$2b$10$EIXvC6dN8Z5zYf5K4fJ4LOGqGqN8yqHqZ.H4sVQxN3fN8F2Z0Y8gK', -- bcrypt hash of "Admin@123"
+  '0x30D336E13fac19C61c116431d44adbD98c386d5d',
+  'super_admin',
+  ARRAY['all'],
+  true
+) ON CONFLICT (email) DO NOTHING;
 
 -- =====================================================
 -- COMPLETED: Schema Migration

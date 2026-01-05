@@ -336,7 +336,7 @@ export const batchVote = async (
   const tx = await contract.batchVote(votes);
   toast.info("Submitting batch votes...");
   const receipt = await tx.wait();
-  toast.success("All votes recorded");
+  // Success message shown by calling component
 
   return {
     transactionHash: receipt.hash,

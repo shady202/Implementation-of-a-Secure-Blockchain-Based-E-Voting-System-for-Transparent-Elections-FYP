@@ -20,6 +20,10 @@ import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
 import { createSession } from "../lib/session"; // Import to create session after OTP
 
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+).replace(/\/api$/, "");
+
 const apuLogo = "/apu-logo.png";
 
 interface LoginPageProps {
@@ -189,19 +193,16 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
       }
 
       // Verify wallet address
-      const verifyResponse = await fetch(
-        "http://localhost:3001/api/admin/verify-wallet",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: adminEmail,
-            walletAddress: connectedWallet,
-          }),
-        }
-      );
+      const verifyResponse = await fetch(`${API_URL}/api/admin/verify-wallet`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: adminEmail,
+          walletAddress: connectedWallet,
+        }),
+      });
 
       const verifyData = await verifyResponse.json();
 
@@ -252,14 +253,11 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
   // Handle OTP Request
   const handleRequestOtp = async (email: string) => {
     try {
-      const response = await fetch(
-        "http://localhost:3001/api/auth/request-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email }),
-        }
-      );
+      const response = await fetch(`${API_URL}/api/auth/request-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
 
       const data = await response.json();
 
@@ -297,27 +295,43 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
 
     setLoading(true);
     try {
-      const response = await fetch(
-        "http://localhost:3001/api/auth/verify-otp",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: otpEmail, otp: otpCode }),
-        }
-      );
+      const response = await fetch(`${API_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: otpEmail, otp: otpCode }),
+      });
 
       const data = await response.json();
+
+      // 🔍 IMMEDIATE LOGGING - BEFORE ANY CHECKS
+      console.log("=".repeat(50));
+      console.log("🚀 OTP VERIFICATION RESPONSE RECEIVED");
+      console.log("=".repeat(50));
+      console.log("Response data:", data);
+      console.log("Token exists:", !!data.token);
+      console.log("Token value:", data.token);
+      console.log("User exists:", !!data.user);
+      console.log("=".repeat(50));
 
       if (!response.ok || !data.success) {
         throw new Error(data.message || "Invalid verification code");
       }
 
+      // 🔍 LOG JWT TOKEN FOR DEBUGGING
+      console.log("✅ JWT Token received:", data.token);
+      console.log("📦 User data:", data.user);
+      console.log("🔐 Token stored in session");
+
       toast.success("Email verified successfully!");
       setShowOtpInput(false);
 
       // NOW create session after OTP is verified
-      if (pendingUser && pendingToken) {
+      if (data.token && data.user) {
+        createSession(data.user, data.token);
+        console.log("✅ Session created successfully");
+      } else if (pendingUser && pendingToken) {
         createSession(pendingUser, pendingToken);
+        console.log("✅ Session created with pending data");
       }
 
       // Proceed with login
@@ -330,6 +344,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
         onNavigate("home");
       }
     } catch (error: any) {
+      console.error("❌ OTP Verification Error:", error);
       toast.error(error.message || "Verification failed");
     } finally {
       setLoading(false);
@@ -590,13 +605,7 @@ export function LoginPage({ onNavigate }: LoginPageProps) {
                   )}
                 </form>
 
-                <div className="text-center space-y-2">
-                  <button
-                    onClick={() => onNavigate("forgot-password")}
-                    className="text-sm text-emerald-600 hover:underline"
-                  >
-                    Forgot your password?
-                  </button>
+                <div className="text-center">
                   <p className="text-slate-600">
                     Don't have an account?{" "}
                     <button

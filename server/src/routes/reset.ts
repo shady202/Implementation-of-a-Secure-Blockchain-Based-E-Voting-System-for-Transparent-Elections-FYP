@@ -10,16 +10,20 @@ router.post("/", async (req: AuthRequest, res) => {
     console.log("🔄 Resetting entire system database...");
 
     // Delete in correct order (foreign key constraints)
+    await query("DELETE FROM vote_history");
     await query("DELETE FROM candidates");
     await query("DELETE FROM categories");
-    await query("DELETE FROM voters");
     await query("DELETE FROM elections");
 
-    console.log("Database reset complete!");
+    // Delete all voters completely
+    await query("DELETE FROM voters");
+
+    console.log("✅ Database reset complete!");
+    console.log("✅ All voters, elections, categories, and candidates deleted");
 
     res.json({
       success: true,
-      message: "Database reset successfully",
+      message: "Database reset successfully - all data cleared",
     });
   } catch (error: any) {
     console.error("❌ Error resetting database:", error?.message);

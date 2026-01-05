@@ -42,6 +42,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     password: "",
     confirmPassword: "",
     faculty: "",
+    year: "",
     agreeToTerms: false,
   });
 
@@ -73,6 +74,14 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       return {
         valid: false,
         error: "Format: TP######@mail.apu.edu.my (exactly 6 digits)",
+      };
+    }
+    // Extract TP number from email and check if it matches Student ID
+    const emailId = email.split("@")[0]; // Gets "TP000001" from email
+    if (formData.studentId && emailId !== formData.studentId) {
+      return {
+        valid: false,
+        error: "Email ID must match your Student ID",
       };
     }
     return { valid: true, error: "" };
@@ -191,9 +200,23 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
         studentId: formData.studentId,
         password: formData.password,
         faculty: formData.faculty,
+        year: formData.year,
       });
 
       if (success) {
+        // Save registration data to localStorage for wallet registration
+        localStorage.setItem(
+          "pendingRegistration",
+          JSON.stringify({
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            studentId: formData.studentId,
+            email: formData.email,
+            faculty: formData.faculty,
+            year: formData.year,
+          })
+        );
+
         toast.success("Registration successful! Please login.");
         onNavigate("login");
       } else {
@@ -210,6 +233,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+
     // Clear error when user starts typing
     if (errors[name as keyof typeof errors]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
@@ -404,6 +428,27 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="studentId" className="text-slate-700">
+                  Student ID (TP Number)
+                </Label>
+                <Input
+                  id="studentId"
+                  name="studentId"
+                  placeholder="TP000001"
+                  required
+                  value={formData.studentId}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={`border-slate-300 ${
+                    errors.studentId ? "border-red-500" : ""
+                  }`}
+                />
+                {errors.studentId && (
+                  <p className="text-xs text-red-500">{errors.studentId}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="email" className="text-slate-700">
                   Student Email
                 </Label>
@@ -422,27 +467,6 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                 />
                 {errors.email && (
                   <p className="text-xs text-red-500">{errors.email}</p>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="studentId" className="text-slate-700">
-                  Student ID (TP Number)
-                </Label>
-                <Input
-                  id="studentId"
-                  name="studentId"
-                  placeholder="TP000001"
-                  required
-                  value={formData.studentId}
-                  onChange={handleChange}
-                  onBlur={handleBlur}
-                  className={`border-slate-300 ${
-                    errors.studentId ? "border-red-500" : ""
-                  }`}
-                />
-                {errors.studentId && (
-                  <p className="text-xs text-red-500">{errors.studentId}</p>
                 )}
               </div>
 
@@ -471,6 +495,29 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                       School of Media & Design
                     </SelectItem>
                     <SelectItem value="science">School of Science</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="year" className="text-slate-700">
+                  Year of Study
+                </Label>
+                <Select
+                  value={formData.year}
+                  onValueChange={(value) =>
+                    setFormData((prev) => ({ ...prev, year: value }))
+                  }
+                >
+                  <SelectTrigger className="border-slate-300">
+                    <SelectValue placeholder="Select your year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">First Year</SelectItem>
+                    <SelectItem value="2">Second Year</SelectItem>
+                    <SelectItem value="3">Third Year</SelectItem>
+                    <SelectItem value="4">Fourth Year</SelectItem>
+                    <SelectItem value="5">Postgraduate</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

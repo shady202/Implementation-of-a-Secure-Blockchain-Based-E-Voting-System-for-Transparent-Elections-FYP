@@ -35,20 +35,23 @@ import {
   hasVotedInCategory,
 } from "../lib/blockchain";
 import { UserNav } from "./UserNav";
-import { isLoggedIn } from "../lib/session";
+import { isLoggedIn, getCurrentUser } from "../lib/session";
 
 const apuLogo = "/apu-logo.png";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+).replace(/\/api$/, "");
 
 interface Category {
-  id: number;
+  id: string;
   name: string;
   description: string;
   isActive: boolean;
 }
 
 interface Candidate {
-  id: number;
-  name: string;
+  id: string;
+  candidate_name: string;
   party: string;
   votes: number;
 }
@@ -64,22 +67,37 @@ export function VotePage({ onNavigate }: VotePageProps) {
   const [alreadyVoted, setAlreadyVoted] = useState(false);
   const [isRegistered, setIsRegistered] = useState<boolean | null>(null);
   const [checkingRegistration, setCheckingRegistration] = useState(true);
-  const currentUser = isLoggedIn();
+  const [walletMismatch, setWalletMismatch] = useState(false);
+  const [walletMismatchMessage, setWalletMismatchMessage] = useState("");
+  const [registeredWallet, setRegisteredWallet] = useState("");
+  const currentUser = getCurrentUser();
 
   const [electionActive, setElectionActive] = useState(false);
   const [electionEnded, setElectionEnded] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [candidatesByCategory, setCandidatesByCategory] = useState<
-    Record<number, Candidate[]>
+    Record<string, Candidate[]>
   >({});
 
-  const [selectedVotes, setSelectedVotes] = useState<Record<number, number>>(
+  const [selectedVotes, setSelectedVotes] = useState<Record<string, string>>(
     {}
   );
   const [activeTab, setActiveTab] = useState("");
   const [timeRemaining, setTimeRemaining] = useState("");
   const [electionTitle, setElectionTitle] = useState("Election");
+  const [electionDescription, setElectionDescription] = useState("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+
+  // Mapping: database category UUID -> blockchain category ID
+  const [blockchainCategoryMap, setBlockchainCategoryMap] = useState<
+    Record<string, number>
+  >({});
+
+  // Mapping: database candidate UUID -> blockchain candidate ID
+  const [blockchainCandidateMap, setBlockchainCandidateMap] = useState<
+    Record<string, number>
+  >({});
 
   /* ================= SLIDING TAB INDICATOR ================= */
 
@@ -136,23 +154,95 @@ export function VotePage({ onNavigate }: VotePageProps) {
         }
 
         setCheckingRegistration(true);
-        const registered = await isVoterRegistered();
-        setIsRegistered(registered);
 
-        if (!registered) {
+        try {
+          // Get current wallet address from MetaMask (SAME AS MY VOTES PAGE)
+          const provider = new ethers.BrowserProvider((window as any).ethereum);
+          const signer = await provider.getSigner();
+          const walletAddress = await signer.getAddress();
+
+          console.log(
+            "🔍 Validating wallet for Elections page:",
+            walletAddress
+          );
+
+          // VALIDATE: Check if wallet matches registered account (EXACT SAME AS MY VOTES PAGE)
+          try {
+            const validateResponse = await fetch(
+              `${API_URL}/api/voters/validate-wallet`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  walletAddress,
+                  studentId: currentUser?.studentId,
+                  email: currentUser?.email,
+                }),
+              }
+            );
+
+            const validateData = await validateResponse.json();
+
+            if (!validateData.valid) {
+              console.log("❌ WALLET-IDENTITY MISMATCH on Elections page!");
+
+              // Check if this is a "needs registration" case
+              if (
+                validateData.message &&
+                validateData.message.includes("complete wallet registration")
+              ) {
+                console.log("🔄 Redirecting to wallet registration...");
+                setIsRegistered(false);
+                setCheckingRegistration(false);
+                setLoading(false);
+                onNavigate("voter-registration");
+                return;
+              }
+
+              // Otherwise, show wallet mismatch error
+              setWalletMismatch(true);
+              setWalletMismatchMessage(
+                validateData.message ||
+                  "This wallet doesn't match your registered account."
+              );
+              setIsRegistered(false);
+              setCheckingRegistration(false);
+              setLoading(false);
+              return;
+            }
+
+            console.log("✅ Wallet validated for Elections page");
+            setWalletMismatch(false);
+            setIsRegistered(true);
+            setCheckingRegistration(false);
+          } catch (validateErr) {
+            console.error("❌ Wallet validation failed:", validateErr);
+            setWalletMismatch(true);
+            setWalletMismatchMessage(
+              "Failed to validate wallet. Please ensure you're using your registered wallet."
+            );
+            setIsRegistered(false);
+            setCheckingRegistration(false);
+            setLoading(false);
+            return;
+          }
+        } catch (walletErr: any) {
+          console.error("Error getting wallet address:", walletErr);
+          setIsRegistered(false);
+          setCheckingRegistration(false);
+          setLoading(false);
           onNavigate("voter-registration");
-          return;
         }
       } catch (err) {
-        console.error("Failed to check voter registration", err);
+        console.error("Failed to check registration", err);
         setIsRegistered(false);
-      } finally {
         setCheckingRegistration(false);
+        setLoading(false);
       }
     };
 
     checkRegistration();
-  }, [onNavigate]);
+  }, [onNavigate, refreshTrigger]);
 
   /* ================= LOAD DATA ================= */
 
@@ -163,138 +253,209 @@ export function VotePage({ onNavigate }: VotePageProps) {
       try {
         setLoading(true);
 
-        const electionState = await getElectionState();
-        setElectionActive(electionState.isActive);
-        setElectionEnded(electionState.hasEnded);
+        console.log(
+          "🚀 STEP 1: Fetching election data from /api/elections/current..."
+        );
 
-        setElectionTitle(electionState.title || "Election");
+        // Fetch election data from DATABASE (FAST - no blockchain!)
+        const electionResponse = await fetch(
+          `${API_URL}/api/elections/current`
+        );
 
-        if (electionState.isActive && electionState.endTime) {
-          const now = Math.floor(Date.now() / 1000);
-          const remaining = electionState.endTime - now;
-          if (remaining > 0) {
-            const days = Math.floor(remaining / 86400);
-            const hours = Math.floor((remaining % 86400) / 3600);
-            const minutes = Math.floor((remaining % 3600) / 60);
-            const seconds = remaining % 60;
-            setTimeRemaining(
-              `${days}d ${hours}h ${minutes}m ${seconds}s remaining`
-            );
-          } else {
-            setTimeRemaining("Election ending soon");
-          }
-        } else {
-          setTimeRemaining("");
+        console.log("✅ STEP 2: Got response from /api/elections/current");
+
+        if (!electionResponse.ok) {
+          throw new Error(`Election API failed: ${electionResponse.status}`);
         }
 
-        if (!electionState.isActive) {
+        const electionData = await electionResponse.json();
+        console.log("✅ STEP 3: Parsed election data:", electionData);
+
+        if (electionData.election) {
+          setElectionTitle(electionData.election.title || "Election");
+          setElectionDescription(electionData.election.description || "");
+
+          // Determine status - handle both 'status' string and 'isActive' boolean
+          const isActive =
+            electionData.election.status === "active" ||
+            electionData.election.isActive === true;
+
+          console.log("📊 Election status check:", {
+            status: electionData.election.status,
+            isActive: electionData.election.isActive,
+            computed_isActive: isActive,
+          });
+
+          setElectionActive(isActive);
+          setElectionEnded(
+            electionData.election.status === "ended" ||
+              electionData.election.isActive === false
+          );
+
+          // Calculate time remaining
+          if (electionData.election.endTime) {
+            const endTime =
+              new Date(electionData.election.endTime).getTime() / 1000;
+            const now = Math.floor(Date.now() / 1000);
+            const remaining = endTime - now;
+
+            if (remaining > 0) {
+              const days = Math.floor(remaining / 86400);
+              const hours = Math.floor((remaining % 86400) / 3600);
+              const minutes = Math.floor((remaining % 3600) / 60);
+              const seconds = remaining % 60;
+              setTimeRemaining(
+                `${days}d ${hours}h ${minutes}m ${seconds}s remaining`
+              );
+            } else {
+              setTimeRemaining("Election ending soon");
+            }
+          }
+        } else {
+          console.log("⚠️  No election data found");
           setElectionActive(false);
           setLoading(false);
           return;
         }
 
-        const cats = await getAllCategories();
-        setCategories(cats);
+        // Check if election is active - use the computed isActive value
+        const isActive =
+          electionData.election.status === "active" ||
+          electionData.election.isActive === true;
 
-        if (cats.length > 0) {
-          setActiveTab(cats[0].name);
+        if (!electionData.election || !isActive) {
+          console.log(
+            "⚠️  Election is not active - status:",
+            electionData.election?.status,
+            "isActive:",
+            electionData.election?.isActive
+          );
+          setElectionActive(false);
+          setLoading(false);
+          return;
         }
 
+        console.log("🚀 STEP 4: Fetching categories from /api/categories...");
+
+        // Fetch categories from DATABASE (FAST - no blockchain!)
+        const categoriesResponse = await fetch(`${API_URL}/api/categories`);
+
+        console.log("✅ STEP 5: Got response from /api/categories");
+
+        if (!categoriesResponse.ok) {
+          throw new Error(
+            `Categories API failed: ${categoriesResponse.status}`
+          );
+        }
+
+        const categoriesResult = await categoriesResponse.json();
+        const categoriesData = categoriesResult.categories || categoriesResult;
+
+        console.log("✅ STEP 6: Parsed categories data:", categoriesData);
+
+        setCategories(categoriesData);
+
+        if (categoriesData.length > 0) {
+          setActiveTab(categoriesData[0].name);
+        }
+
+        // Fetch blockchain categories and create mapping
+        console.log(
+          "🔗 STEP 6.5: Fetching blockchain categories for ID mapping..."
+        );
+        try {
+          const blockchainCategories = await getAllCategories();
+          console.log("✅ Blockchain categories:", blockchainCategories);
+
+          // Create mapping: database UUID -> blockchain numeric ID (by matching names)
+          const mapping: Record<string, number> = {};
+          for (const dbCat of categoriesData) {
+            const blockchainCat = blockchainCategories.find(
+              (bc: any) =>
+                bc.name === dbCat.name || bc.name === dbCat.category_name
+            );
+            if (blockchainCat) {
+              mapping[dbCat.id] = blockchainCat.id;
+              console.log(
+                `  📍 Mapped "${dbCat.name}" (${dbCat.id}) -> blockchain ID ${blockchainCat.id}`
+              );
+            } else {
+              console.warn(
+                `  ⚠️ No blockchain category found for "${dbCat.name}"`
+              );
+            }
+          }
+          setBlockchainCategoryMap(mapping);
+        } catch (bcError) {
+          console.error("❌ Failed to fetch blockchain categories:", bcError);
+        }
+
+        console.log("🚀 STEP 7: Fetching candidates for each category...");
+
+        // Fetch ALL candidates from DATABASE (FAST - no blockchain!)
+        const allCandidatesResponse = await fetch(`${API_URL}/api/candidates`);
+
+        if (!allCandidatesResponse.ok) {
+          throw new Error(
+            `Candidates API failed: ${allCandidatesResponse.status}`
+          );
+        }
+
+        const allCandidatesResult = await allCandidatesResponse.json();
+        const allCandidates =
+          allCandidatesResult.candidates || allCandidatesResult;
+
+        console.log("✅ STEP 8: Got all candidates:", allCandidates.length);
+
+        // Group candidates by category_id
         const candidatesMap: Record<number, Candidate[]> = {};
-        for (const c of cats) {
-          const cands = await getCandidatesForCategory(c.id);
-          candidatesMap[c.id] = cands;
+        for (const cat of categoriesData) {
+          // Filter candidates for this category
+          const categoryCandidates = allCandidates.filter(
+            (candidate: any) => candidate.category_id === cat.id
+          );
+          candidatesMap[cat.id] = categoryCandidates;
+          console.log(
+            `  ✅ ${categoryCandidates.length} candidates for ${cat.name}`
+          );
         }
 
         setCandidatesByCategory(candidatesMap);
 
-        // HYBRID VOTE CHECK: Database (fast) + Blockchain (secure)
-        // New contract deployed with reset bug FIXED!
+        console.log("✅ Categories and candidates loaded");
+
+        console.log("🔍 STEP 8: Checking if already voted (database only)...");
+
+        // Check if user has already voted (from database - NO MetaMask!)
         try {
-          const provider = new ethers.BrowserProvider((window as any).ethereum);
-          const signer = await provider.getSigner();
-          const walletAddress = await signer.getAddress();
-
-          console.log("🔍 HYBRID vote check for wallet:", walletAddress);
-
-          // ⚡ STEP 1: Check DATABASE (fast, election-specific)
-          let databaseSaysVoted = false;
-          try {
-            const dbResponse = await fetch(
-              "http://localhost:3001/api/voters/check-registration",
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ walletAddress }),
-              }
-            );
-            const dbData = await dbResponse.json();
-            databaseSaysVoted = dbData.registered && dbData.hasVoted;
-            console.log(
-              "💾 Database check:",
-              databaseSaysVoted ? "❌ VOTED" : "✅ Not voted"
-            );
-          } catch (dbErr) {
-            console.error("Database check failed:", dbErr);
-          }
-
-          // 🔒 STEP 2: Check BLOCKCHAIN (secure, permanent audit)
-          let blockchainSaysVoted = false;
-          try {
-            console.log(
-              "📋 Checking blockchain for categories:",
-              cats.map((c: Category) => ({ id: c.id, name: c.name }))
-            );
-
-            for (const cat of cats) {
-              const hasVoted = await hasVotedInCategory(walletAddress, cat.id);
-              if (hasVoted) {
-                blockchainSaysVoted = true;
-                console.log(
-                  "⛓️  Blockchain: VOTED in category",
-                  cat.name,
-                  "(ID:",
-                  cat.id,
-                  ")"
-                );
-                break;
-              }
+          const dbResponse = await fetch(
+            `${API_URL}/api/voters/check-registration`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ studentId: currentUser?.studentId }),
             }
-            console.log(
-              "⛓️  Blockchain check:",
-              blockchainSaysVoted ? "❌ VOTED" : "✅ Not voted"
-            );
-          } catch (bcErr) {
-            console.error("Blockchain check failed:", bcErr);
-          }
+          );
 
-          // ✅ FINAL DECISION: Block if EITHER says voted
-          if (databaseSaysVoted || blockchainSaysVoted) {
-            const detectedBy =
-              databaseSaysVoted && blockchainSaysVoted
-                ? "both database AND blockchain"
-                : databaseSaysVoted
-                ? "database"
-                : "blockchain";
-
-            console.warn(
-              "❌ ALREADY VOTED - Detected by:",
-              detectedBy,
-              "\n  Database:",
-              databaseSaysVoted ? "VOTED" : "Not voted",
-              "\n  Blockchain:",
-              blockchainSaysVoted ? "VOTED" : "Not voted"
-            );
-            setAlreadyVoted(true);
-          } else {
-            console.log(
-              "✅ ELIGIBLE TO VOTE - Both checks passed:\n  Database: Not voted\n  Blockchain: Not voted"
-            );
+          if (!dbResponse.ok) {
+            console.error("Failed to check voting status");
             setAlreadyVoted(false);
+          } else {
+            const dbData = await dbResponse.json();
+
+            console.log("✅ STEP 9: Vote status check complete");
+
+            if (dbData.registered && dbData.hasVoted) {
+              console.log("❌ Already voted (database)");
+              setAlreadyVoted(true);
+            } else {
+              console.log("✅ Eligible to vote");
+              setAlreadyVoted(false);
+            }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error("❌ Failed to check voting status:", err);
-          setAlreadyVoted(true);
+          setAlreadyVoted(false); // Allow voting on error
         }
       } catch (err) {
         console.error("Failed to load election data", err);
@@ -304,7 +465,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
     };
 
     loadData();
-  }, [isRegistered]);
+  }, [isRegistered, refreshTrigger]);
 
   /* ================= REAL-TIME COUNTDOWN ================= */
 
@@ -343,7 +504,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
   /* ================= HELPERS ================= */
 
-  const handleSelect = (categoryId: number, candidateId: number) => {
+  const handleSelect = (categoryId: string, candidateId: string) => {
     setSelectedVotes((prev) => ({
       ...prev,
       [categoryId]: candidateId,
@@ -358,10 +519,54 @@ export function VotePage({ onNavigate }: VotePageProps) {
     try {
       setSubmitting(true);
 
-      const votes = categories.map((cat) => ({
-        categoryId: cat.id,
-        candidateId: selectedVotes[cat.id],
-      }));
+      // Convert UUID-based votes to blockchain numeric IDs using the mapping
+      const votes = await Promise.all(
+        categories.map(async (cat) => {
+          const selectedCandidateId = selectedVotes[cat.id];
+          const candidatesInCategory = candidatesByCategory[cat.id] || [];
+
+          // Find the selected candidate in database
+          const selectedCandidate = candidatesInCategory.find(
+            (c) => c.id === selectedCandidateId
+          );
+
+          // Get blockchain category ID from mapping
+          const blockchainCategoryId = blockchainCategoryMap[cat.id];
+
+          if (blockchainCategoryId === undefined) {
+            throw new Error(
+              `No blockchain mapping found for category "${cat.name}"`
+            );
+          }
+
+          // Fetch blockchain candidates for this category
+          const blockchainCandidates = await getCandidatesForCategory(
+            blockchainCategoryId
+          );
+
+          // Find blockchain candidate by matching name
+          const blockchainCandidate = blockchainCandidates.find(
+            (bc: any) => bc.name === selectedCandidate?.candidate_name
+          );
+
+          if (!blockchainCandidate) {
+            throw new Error(
+              `Blockchain candidate not found for "${selectedCandidate?.candidate_name}" in category "${cat.name}"`
+            );
+          }
+
+          console.log(
+            `  ✅ Matched "${selectedCandidate?.candidate_name}" -> blockchain ID ${blockchainCandidate.id}`
+          );
+
+          return {
+            categoryId: blockchainCategoryId,
+            candidateId: blockchainCandidate.id,
+          };
+        })
+      );
+
+      console.log("🗳️ Submitting votes to blockchain:", votes);
 
       const result = await batchVote(votes);
 
@@ -371,13 +576,12 @@ export function VotePage({ onNavigate }: VotePageProps) {
       const walletAddress = await signer.getAddress();
 
       try {
-        // Get current election ID from database (if exists)
+        // Get active election from database
         const electionResponse = await fetch(
-          "http://localhost:3001/api/elections/current"
+          `${API_URL}/api/elections/current`
         );
         const electionData = await electionResponse.json();
 
-        // ALWAYS save vote history, even if no election!
         const electionId = electionData.election?.id || null;
         const electionTitle =
           electionData.election?.title || "General Election";
@@ -400,24 +604,22 @@ export function VotePage({ onNavigate }: VotePageProps) {
             categoryId: cat.id,
             categoryName: cat.name,
             candidateId: candidateId,
-            candidateName: candidate?.name || `Candidate ${candidateId}`,
+            candidateName:
+              candidate?.candidate_name || `Candidate ${candidateId}`,
             transactionHash: result.transactionHash,
           };
         });
 
         // Save vote history (works with or without election)
-        const saveResponse = await fetch(
-          "http://localhost:3001/api/votes/save",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              walletAddress,
-              electionId, // Can be null
-              votes: votesWithNames,
-            }),
-          }
-        );
+        const saveResponse = await fetch(`${API_URL}/api/votes/save`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            walletAddress,
+            electionId, // Can be null
+            votes: votesWithNames,
+          }),
+        });
 
         const saveData = await saveResponse.json();
 
@@ -443,7 +645,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
         );
 
         const markVotedResponse = await fetch(
-          "http://localhost:3001/api/voters/mark-voted",
+          `${API_URL}/api/voters/mark-voted`,
           {
             method: "POST",
             headers: {
@@ -518,6 +720,80 @@ export function VotePage({ onNavigate }: VotePageProps) {
           <p className="text-xl font-medium text-slate-700">
             Loading election data...
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (walletMismatch) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-b from-emerald-50 to-white py-10">
+        <div className="w-full max-w-2xl px-6">
+          <Card className="border-2 border-emerald-200 shadow-xl">
+            <CardHeader className="bg-emerald-50 border-b border-emerald-200">
+              <div className="flex items-center gap-3">
+                <AlertCircle className="h-8 w-8 text-emerald-600" />
+                <CardTitle className="text-2xl font-bold text-slate-900">
+                  Wallet Address Mismatch
+                </CardTitle>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-6">
+              <Alert className="mb-6 bg-emerald-50 border-emerald-300">
+                <AlertCircle className="h-5 w-5 text-emerald-600" />
+                <AlertTitle className="text-slate-900 font-semibold">
+                  Security Alert
+                </AlertTitle>
+                <AlertDescription className="text-slate-700 mt-2">
+                  {walletMismatchMessage}
+                </AlertDescription>
+              </Alert>
+
+              <div className="space-y-4 text-slate-700">
+                <p className="font-medium">
+                  You are currently connected with a wallet that doesn't match
+                  your registered account.
+                </p>
+
+                <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg">
+                  <p className="text-sm font-semibold text-blue-900 mb-2">
+                    <Info className="h-4 w-4 inline mr-2" />
+                    How to fix this:
+                  </p>
+                  <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
+                    <li>Open your MetaMask wallet</li>
+                    <li>Switch to the wallet address you registered with</li>
+                    <li>Refresh this page</li>
+                    <li>Ensure you're logged in with the correct TP number</li>
+                  </ol>
+                </div>
+
+                <p className="text-sm text-slate-600">
+                  <strong>Why is this happening?</strong> To prevent multiple
+                  votes, each student can only vote using the wallet address
+                  they registered with during account creation.
+                </p>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <Button
+                  onClick={() => {
+                    setRefreshTrigger((prev) => prev + 1);
+                  }}
+                  className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white"
+                >
+                  Refresh Page
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => onNavigate("home")}
+                  className="flex-1 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                >
+                  Return Home
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -717,8 +993,13 @@ export function VotePage({ onNavigate }: VotePageProps) {
                 <CardTitle className="text-xl font-bold text-slate-900">
                   {electionTitle}
                 </CardTitle>
+                {electionDescription && (
+                  <CardDescription className="text-slate-600 mt-2">
+                    {electionDescription}
+                  </CardDescription>
+                )}
                 {timeRemaining && (
-                  <CardDescription className="text-amber-600 font-medium">
+                  <CardDescription className="text-amber-600 font-medium mt-2">
                     {timeRemaining}
                   </CardDescription>
                 )}
@@ -783,7 +1064,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
                       <RadioGroup
                         value={String(selectedVotes[cat.id] || "")}
-                        onValueChange={(v) => handleSelect(cat.id, Number(v))}
+                        onValueChange={(v) => handleSelect(cat.id, v)}
                       >
                         {candidatesByCategory[cat.id]?.map((cand) => (
                           <div
@@ -804,7 +1085,7 @@ export function VotePage({ onNavigate }: VotePageProps) {
                               className="flex flex-col cursor-pointer w-full"
                             >
                               <span className="font-medium text-slate-900">
-                                {cand.name}
+                                {cand.candidate_name}
                               </span>
                               <span className="text-sm text-slate-500">
                                 {cand.party}

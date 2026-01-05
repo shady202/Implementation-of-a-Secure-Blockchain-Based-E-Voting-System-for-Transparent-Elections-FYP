@@ -46,9 +46,25 @@ export function UserNav({ onNavigate }: UserNavProps) {
     );
   }
 
-  const initials = `${user.firstName?.[0] || ""}${
-    user.lastName?.[0] || ""
-  }`.toUpperCase();
+  // Generate initials from available data
+  let initials = "";
+  if (user.firstName && user.lastName) {
+    initials = `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
+  } else if (user.studentId) {
+    // Use first 2 characters of student ID (e.g., "TP" from "TP000001")
+    initials = user.studentId.substring(0, 2).toUpperCase();
+  } else if (user.email) {
+    // Use first 2 characters of email
+    initials = user.email.substring(0, 2).toUpperCase();
+  } else {
+    initials = "U"; // Default fallback
+  }
+
+  // Display name
+  const displayName =
+    user.firstName && user.lastName
+      ? `${user.firstName} ${user.lastName}`
+      : user.studentId || user.email || "User";
 
   return (
     <DropdownMenu>
@@ -62,9 +78,7 @@ export function UserNav({ onNavigate }: UserNavProps) {
       <DropdownMenuContent className="w-56" align="end" forceMount>
         <DropdownMenuLabel className="font-normal">
           <div className="flex flex-col space-y-1">
-            <p className="text-sm leading-none">
-              {user.firstName} {user.lastName}
-            </p>
+            <p className="text-sm font-medium leading-none">{displayName}</p>
             <p className="text-xs leading-none text-slate-600">{user.email}</p>
             {user.studentId && (
               <p className="text-xs leading-none text-slate-600">

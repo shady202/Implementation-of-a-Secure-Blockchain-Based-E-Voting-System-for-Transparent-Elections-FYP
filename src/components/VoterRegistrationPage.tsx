@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ethers } from "ethers";
 import { Button } from "./ui/button";
 import {
   Card,
@@ -30,6 +31,7 @@ import {
 import {
   connectWallet,
   registerVoter as registerVoterBlockchain,
+  getVoterInfo,
 } from "../lib/blockchain";
 import { NETWORKS } from "../lib/networks";
 import { toast } from "sonner";
@@ -57,8 +59,13 @@ export function VoterRegistrationPage({
   const [registered, setRegistered] = useState(false);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState("");
+  const [alreadyRegistered, setAlreadyRegistered] = useState(false);
+  const [registeredWallet, setRegisteredWallet] = useState("");
   const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
     studentId: "",
+    email: "",
     department: "",
     year: "",
     walletAddress: "",
@@ -75,26 +82,121 @@ export function VoterRegistrationPage({
     science: "School of Science",
   };
 
-  useEffect(() => {
-    // Auto-fill Student ID and Faculty from logged-in user data
-    const userData = getCurrentUser();
-    console.log("VoterRegistration - User Data:", userData); // DEBUG
-    if (userData) {
-      // Convert faculty code to full name if needed
-      const facultyCode = userData.department || "";
-      const facultyFullName =
-        facultyMap[facultyCode.toLowerCase()] || facultyCode;
+  // Map year numbers to display names
+  const yearMap: Record<string, string> = {
+    "1": "First Year",
+    "2": "Second Year",
+    "3": "Third Year",
+    "4": "Fourth Year",
+    "5": "Postgraduate",
+  };
 
-      setFormData((prev) => ({
-        ...prev,
-        studentId: userData.studentId || "",
-        department: facultyFullName,
-      }));
+  // Reverse map: display names to numbers
+  const yearReverseMap: Record<string, number> = {
+    "First Year": 1,
+    "Second Year": 2,
+    "Third Year": 3,
+    "Fourth Year": 4,
+    Postgraduate: 5,
+  };
+
+  // Helper function to get numeric year
+  const getNumericYear = (yearValue: string): number => {
+    // If it's already a number string, convert it
+    const numValue = Number(yearValue);
+    if (!isNaN(numValue)) {
+      return numValue;
     }
+    // Otherwise, use reverse map
+    return yearReverseMap[yearValue] || 1;
+  };
 
+  useEffect(() => {
+    const loadUserData = async () => {
+      // Get current logged-in user
+      const userData = getCurrentUser();
+      console.log("VoterRegistration - Current User Data:", userData);
+
+      if (!userData || !userData.studentId) {
+        console.log("❌ No user session found");
+        return;
+      }
+
+      try {
+        // ✅ FETCH FRESH DATA FROM DATABASE (not from session cache)
+        console.log("🔄 Fetching fresh user data from database...");
+        const response = await fetch(
+          `${import.meta.env.VITE_API_URL}/voters/refresh-session`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ studentId: userData.studentId }),
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch user data");
+        }
+
+        const data = await response.json();
+        console.log("✅ Fresh data from database:", data.user);
+
+        if (data.success && data.user) {
+          const user = data.user;
+
+          // Map faculty code to full name
+          const facultyCode = user.department || "";
+          const facultyFullName =
+            facultyMap[facultyCode.toLowerCase()] || facultyCode;
+
+          // Map year number to display name
+          const yearValue = String(user.year || user.yearOfStudy || "");
+          const yearDisplay = yearMap[yearValue] || yearValue;
+
+          const studentId = user.studentId || "";
+          const email = studentId ? `${studentId}@mail.apu.edu.my` : "";
+
+          // Set form data from FRESH database data
+          setFormData((prev) => ({
+            ...prev,
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            studentId: studentId,
+            email: email,
+            department: facultyFullName,
+            year: yearDisplay,
+          }));
+
+          console.log("✅ Form data updated with fresh database values");
+          console.log("   First Name:", user.firstName);
+          console.log("   Last Name:", user.lastName);
+          console.log("   Faculty:", facultyFullName);
+          console.log("   Year:", yearDisplay);
+        }
+      } catch (error) {
+        console.error("❌ Error fetching fresh user data:", error);
+        toast.error("Failed to load user data. Please refresh the page.");
+      }
+    };
+
+    loadUserData();
     checkWalletConnection();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const checkExistingWallet = async () => {
+    // DISABLED: Backend already handles wallet validation during registration
+    // The /voters/registered-wallet and /voters/check-wallet endpoints don't exist
+    // and cause 404 errors. The backend's /voters/register-voter endpoint
+    // already has comprehensive validation for:
+    // - Checking if student ID already has a wallet
+    // - Checking if wallet is already registered to another student
+    // - Preventing wallet address changes
+    console.log(
+      "Wallet validation will be handled by backend during registration"
+    );
+    return;
+  };
 
   const checkWalletConnection = async () => {
     if (
@@ -201,12 +303,7 @@ export function VoterRegistrationPage({
       return;
     }
 
-    if (
-      !formData.studentId ||
-      !formData.department ||
-      !formData.year ||
-      !formData.walletAddress
-    ) {
+    if (!formData.studentId || !formData.walletAddress) {
       toast.error("Please fill in all required fields");
       setError("All fields are required");
       return;
@@ -216,12 +313,107 @@ export function VoterRegistrationPage({
     setError("");
 
     try {
-      // ✅ Step 1: Register on blockchain (expects 3 args, returns void)
+      // ✅ FORCE SWITCH TO HOODI NETWORK FIRST
+      toast.info("Checking network...");
+      const currentChainId = await (window as any).ethereum.request({
+        method: "eth_chainId",
+      });
+
+      const hoodiChainId = NETWORKS.hoodi.chainId; // "0x88BB0" (560048)
+
+      if (currentChainId.toLowerCase() !== hoodiChainId.toLowerCase()) {
+        toast.info("Switching to Hoodi network...");
+
+        try {
+          // Try to switch to Hoodi network
+          await (window as any).ethereum.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: hoodiChainId }],
+          });
+          toast.success("Switched to Hoodi network!");
+        } catch (switchError: any) {
+          // If network doesn't exist, add it
+          if (switchError.code === 4902) {
+            toast.info("Adding Hoodi network...");
+            await (window as any).ethereum.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: hoodiChainId,
+                  chainName: NETWORKS.hoodi.chainName,
+                  rpcUrls: [NETWORKS.hoodi.rpcUrls[0]],
+                  nativeCurrency: NETWORKS.hoodi.nativeCurrency,
+                  blockExplorerUrls: NETWORKS.hoodi.blockExplorerUrls,
+                },
+              ],
+            });
+            toast.success("Hoodi network added and selected!");
+          } else {
+            throw switchError;
+          }
+        }
+      }
+
+      // ✅ NEW: Check if already registered on blockchain BEFORE attempting registration
+      toast.info("Checking blockchain registration status...");
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const walletAddress = await signer.getAddress();
+
+      try {
+        const voterInfo = await getVoterInfo(walletAddress);
+
+        if (voterInfo.isRegistered) {
+          console.log(
+            "⚠️ Already registered on blockchain - syncing with database..."
+          );
+          toast.info("Already registered on blockchain, updating database...");
+
+          // Just update the database with the wallet address
+          const apiResponse = await registerVoterAPI(formData);
+
+          if (apiResponse?.success) {
+            setRegistered(true);
+            toast.success("Registration synced successfully!");
+            localStorage.setItem("voterRegistrationCompleted", "true");
+            localStorage.setItem(
+              "registrationTimestamp",
+              Date.now().toString()
+            );
+            localStorage.removeItem("pendingRegistration");
+
+            // Wait 2 seconds for database to sync
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            onRegistrationComplete?.();
+          } else {
+            const msg =
+              apiResponse?.message ||
+              "Failed to sync with database. Please try again.";
+            setError(msg);
+            toast.error(msg);
+          }
+          return; // Exit early - no need to register on blockchain again
+        }
+      } catch (checkErr) {
+        console.log(
+          "Not registered on blockchain yet, proceeding with registration..."
+        );
+      }
+
+      // ✅ Step 1: Register on blockchain (only if not already registered)
       toast.info("Registering on blockchain...");
+      const numericYear = getNumericYear(formData.year);
+      console.log(
+        "📊 Converting year for blockchain:",
+        formData.year,
+        "→",
+        numericYear
+      );
       await registerVoterBlockchain(
         formData.studentId,
         formData.department,
-        Number(formData.year)
+        numericYear
       );
 
       // Step 2: Save to PostgreSQL database
@@ -231,7 +423,17 @@ export function VoterRegistrationPage({
       if (apiResponse?.success) {
         setRegistered(true);
         toast.success("Registration completed successfully!");
+
+        // Set flag to indicate registration just completed
         localStorage.setItem("voterRegistrationCompleted", "true");
+        localStorage.setItem("registrationTimestamp", Date.now().toString());
+
+        // Clear pending registration data
+        localStorage.removeItem("pendingRegistration");
+
+        // Wait 2 seconds for blockchain to fully sync before allowing navigation
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+
         onRegistrationComplete?.();
       } else {
         const msg =
@@ -353,7 +555,34 @@ export function VoterRegistrationPage({
             </CardHeader>
 
             <CardContent>
-              {registered ? (
+              {alreadyRegistered ? (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription>
+                    <p className="font-semibold text-amber-900">
+                      Wallet Already Registered
+                    </p>
+                    <p className="text-sm text-amber-800 mt-2">
+                      You have already registered with wallet:
+                    </p>
+                    <p className="font-mono text-xs mt-2 text-amber-900 break-all">
+                      {registeredWallet}
+                    </p>
+                    <p className="text-sm text-amber-800 mt-3">
+                      You cannot change your wallet address.
+                    </p>
+                    <p className="text-sm text-emerald-700 mt-2">
+                      ✅ You can vote in all elections with this wallet.
+                    </p>
+                    <Button
+                      onClick={() => onNavigate("vote")}
+                      className="mt-4 bg-emerald-600 hover:bg-emerald-700"
+                    >
+                      Go to Vote Page
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              ) : registered ? (
                 <div className="flex flex-col items-center justify-center py-6 text-center">
                   <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
                   <h3 className="text-slate-900">Registration Successful!</h3>
@@ -467,6 +696,37 @@ export function VoterRegistrationPage({
                     </Alert>
                   )}
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input
+                        id="firstName"
+                        placeholder="John"
+                        value={formData.firstName}
+                        readOnly
+                        disabled
+                        className="bg-slate-100 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-emerald-600">
+                        ✓ Auto-filled from your account
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input
+                        id="lastName"
+                        placeholder="Doe"
+                        value={formData.lastName}
+                        readOnly
+                        disabled
+                        className="bg-slate-100 cursor-not-allowed"
+                      />
+                      <p className="text-xs text-emerald-600">
+                        ✓ Auto-filled from your account
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
                     <Label htmlFor="studentId">Student ID</Label>
                     <Input
@@ -490,9 +750,26 @@ export function VoterRegistrationPage({
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="email">Student Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      placeholder="TP000001@mail.apu.edu.my"
+                      value={formData.email}
+                      readOnly
+                      disabled
+                      className="bg-slate-100 cursor-not-allowed"
+                    />
+                    <p className="text-xs text-emerald-600">
+                      ✓ Auto-generated from account
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="department">Faculty</Label>
                     <Input
                       id="department"
+                      placeholder="School of Computing"
                       value={formData.department}
                       readOnly
                       disabled
@@ -505,24 +782,17 @@ export function VoterRegistrationPage({
 
                   <div className="space-y-2">
                     <Label htmlFor="year">Year of Study</Label>
-                    <Select
+                    <Input
+                      id="year"
+                      placeholder="First Year"
                       value={formData.year}
-                      onValueChange={(value) =>
-                        setFormData((prev) => ({ ...prev, year: value }))
-                      }
-                      required
-                    >
-                      <SelectTrigger id="year">
-                        <SelectValue placeholder="Select your year" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">First Year</SelectItem>
-                        <SelectItem value="2">Second Year</SelectItem>
-                        <SelectItem value="3">Third Year</SelectItem>
-                        <SelectItem value="4">Fourth Year</SelectItem>
-                        <SelectItem value="5">Postgraduate</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      readOnly
+                      disabled
+                      className="bg-slate-100 cursor-not-allowed"
+                    />
+                    <p className="text-xs text-emerald-600">
+                      ✓ Auto-filled from your account
+                    </p>
                   </div>
 
                   <div className="space-y-2">

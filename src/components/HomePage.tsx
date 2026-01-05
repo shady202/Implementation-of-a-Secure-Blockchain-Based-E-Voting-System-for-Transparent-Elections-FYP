@@ -8,7 +8,7 @@ import {
 } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Progress } from "./ui/progress";
-import { Shield, Lock, Check, ChevronRight } from "lucide-react";
+import { Shield, Lock, Check, ChevronRight, AlertCircle } from "lucide-react";
 import { UserNav } from "./UserNav";
 import { isLoggedIn } from "../lib/session";
 import { useState, useEffect } from "react";
@@ -35,59 +35,121 @@ export function HomePage({ onNavigate }: HomePageProps) {
   const currentUser = isLoggedIn();
   const [electionData, setElectionData] = useState<ElectionData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hasMetaMask, setHasMetaMask] = useState(true);
 
   useEffect(() => {
+    // Check if MetaMask is installed
+    const checkMetaMask = () => {
+      if (typeof window !== "undefined" && (window as any).ethereum) {
+        setHasMetaMask(true);
+      } else {
+        setHasMetaMask(false);
+      }
+    };
+    checkMetaMask();
+
     const fetchElectionData = async () => {
       try {
-        // Fetch directly from blockchain (skip Supabase API to avoid 404 errors)
-        // Check if MetaMask is available
-        if (typeof window === "undefined" || !(window as any).ethereum) {
-          throw new Error("MetaMask not available");
+        // Try blockchain first (for desktop with MetaMask)
+        if (typeof window !== "undefined" && (window as any).ethereum) {
+          try {
+            const blockchainElection = await getElectionState();
+            const startDate = blockchainElection.startTime
+              ? new Date(blockchainElection.startTime * 1000)
+              : null;
+            const endDate = blockchainElection.endTime
+              ? new Date(blockchainElection.endTime * 1000)
+              : null;
+
+            // Map blockchain states: None=0, Created=1, Active=2, Ended=3
+            let status = "Not Available";
+            let isActive = false;
+
+            if (blockchainElection.state === 0) {
+              status = "No Election";
+            } else if (blockchainElection.state === 1) {
+              status = "Setup Phase";
+            } else if (blockchainElection.state === 2) {
+              status = "Active";
+              isActive = true;
+            } else if (blockchainElection.state === 3) {
+              status = "Ended";
+            }
+
+            setElectionData({
+              title: blockchainElection.title || "No Active Election",
+              status,
+              startDate: startDate
+                ? startDate.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "TBD",
+              endDate: endDate
+                ? endDate.toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                  })
+                : "TBD",
+              votesCount: blockchainElection.totalVotes || 0,
+              isActive,
+            });
+            setLoading(false);
+            return; // Success, exit early
+          } catch (blockchainError) {
+            console.log("Blockchain unavailable, falling back to API");
+          }
         }
 
-        const blockchainElection = await getElectionState();
-        const startDate = blockchainElection.startTime
-          ? new Date(blockchainElection.startTime * 1000)
-          : null;
-        const endDate = blockchainElection.endTime
-          ? new Date(blockchainElection.endTime * 1000)
-          : null;
+        // Fallback to API (for mobile or when MetaMask unavailable)
+        // Use /latest endpoint to get election even in Setup Phase
+        const response = await fetch(
+          `${
+            import.meta.env.VITE_API_URL?.replace(/\/api$/, "") ||
+            "http://localhost:3001"
+          }/api/elections/latest`
+        );
+        const data = await response.json();
 
-        // Map blockchain states: None=0, Created=1, Active=2, Ended=3
-        let status = "Not Available";
-        let isActive = false;
+        if (data.election) {
+          const startDate = data.election.startTime
+            ? new Date(data.election.startTime)
+            : null;
+          const endDate = data.election.endTime
+            ? new Date(data.election.endTime)
+            : null;
 
-        if (blockchainElection.state === 0) {
-          status = "No Election";
-        } else if (blockchainElection.state === 1) {
-          status = "Setup Phase";
-        } else if (blockchainElection.state === 2) {
-          status = "Active";
-          isActive = true;
-        } else if (blockchainElection.state === 3) {
-          status = "Ended";
+          setElectionData({
+            title: data.election.title || "No Active Election",
+            status: data.election.status || "Not Available",
+            startDate: startDate
+              ? startDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
+              : "TBD",
+            endDate: endDate
+              ? endDate.toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                })
+              : "TBD",
+            votesCount: 0,
+            isActive: data.election.isActive || false,
+          });
+        } else {
+          // No election exists at all
+          setElectionData({
+            title: "No Active Election",
+            status: "Not Available",
+            startDate: "TBD",
+            endDate: "TBD",
+            votesCount: 0,
+            isActive: false,
+          });
         }
-
-        setElectionData({
-          title: blockchainElection.title || "No Active Election",
-          status,
-          startDate: startDate
-            ? startDate.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })
-            : "TBD",
-          endDate: endDate
-            ? endDate.toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })
-            : "TBD",
-          votesCount: blockchainElection.totalVotes || 0,
-          isActive,
-        });
       } catch (error) {
-        console.error("Failed to fetch election data from blockchain:", error);
+        console.error("Failed to fetch election data:", error);
         // Final fallback: static defaults
         setElectionData({
           title: "No Active Election",
@@ -187,6 +249,29 @@ export function HomePage({ onNavigate }: HomePageProps) {
           </div>
         </div>
       </header>
+
+      {/* MetaMask Installation Banner */}
+      {!hasMetaMask && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="container mx-auto max-w-7xl px-6 md:px-8 py-3">
+            <div className="flex items-center justify-center gap-3 text-sm">
+              <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0" />
+              <p className="text-amber-900">
+                <span className="font-semibold">MetaMask not detected.</span> To
+                participate in blockchain voting, please install MetaMask.{" "}
+                <a
+                  href="https://metamask.io/download/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline font-semibold hover:text-amber-700 transition-colors"
+                >
+                  Install MetaMask →
+                </a>
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero Section */}
       <main className="flex-1">

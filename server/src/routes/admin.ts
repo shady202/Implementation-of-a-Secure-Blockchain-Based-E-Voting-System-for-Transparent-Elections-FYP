@@ -90,6 +90,14 @@ router.post("/verify-wallet", async (req, res) => {
       });
     }
 
+    // Type validation
+    if (typeof email !== "string" || typeof walletAddress !== "string") {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid input types",
+      });
+    }
+
     // Find admin and verify wallet
     const result = await query(
       `SELECT 
@@ -223,6 +231,209 @@ router.post("/log-activity", async (req, res) => {
   } catch (error) {
     console.error("Error logging activity:", error);
     res.status(500).json({ error: "Failed to log activity" });
+  }
+});
+
+// GET /api/admin/active-users - Get count and list of currently active users
+router.get("/active-users", async (req, res) => {
+  try {
+    // Get capacity settings
+    const settingsResult = await query(
+      "SELECT value FROM system_settings WHERE key = 'capacity_testing_enabled' OR key = 'max_concurrent_users'"
+    );
+
+    let capacityEnabled = false;
+    let maxUsers = 0;
+
+    settingsResult.rows.forEach((row) => {
+      if (row.value?.capacity_testing_enabled !== undefined) {
+        capacityEnabled = row.value.capacity_testing_enabled;
+      }
+      if (row.value?.max_concurrent_users !== undefined) {
+        maxUsers = row.value.max_concurrent_users;
+      }
+    });
+
+    // Get active users (logged in within last 15 minutes for real-time tracking)
+    const activeUsersResult = await query(
+      `SELECT 
+        student_id,
+        email,
+        full_name,
+        last_login_at,
+        has_voted
+       FROM voters 
+       WHERE last_login_at > NOW() - INTERVAL '15 minutes'
+       ORDER BY last_login_at DESC`
+    );
+
+    const activeCount = activeUsersResult.rows.length;
+    const activeUsers = activeUsersResult.rows.map((user) => ({
+      studentId: user.student_id,
+      email: user.email,
+      fullName: user.full_name,
+      lastLoginAt: user.last_login_at,
+      hasVoted: user.has_voted,
+    }));
+
+    res.json({
+      success: true,
+      capacityEnabled,
+      maxUsers,
+      activeCount,
+      availableSlots: capacityEnabled
+        ? Math.max(0, maxUsers - activeCount)
+        : null,
+      isAtCapacity: capacityEnabled ? activeCount >= maxUsers : false,
+      activeUsers,
+    });
+  } catch (error) {
+    console.error("Error fetching active users:", error);
+    res.status(500).json({ error: "Failed to fetch active users" });
+  }
+});
+
+// GET /api/admin/capacity-status - Quick capacity status check
+router.get("/capacity-status", async (req, res) => {
+  try {
+    // Get capacity settings
+    const settingsResult = await query(
+      "SELECT value FROM system_settings WHERE key = 'capacity_testing_enabled' OR key = 'max_concurrent_users'"
+    );
+
+    let capacityEnabled = false;
+    let maxUsers = 0;
+
+    settingsResult.rows.forEach((row) => {
+      if (row.value?.capacity_testing_enabled !== undefined) {
+        capacityEnabled = row.value.capacity_testing_enabled;
+      }
+      if (row.value?.max_concurrent_users !== undefined) {
+        maxUsers = row.value.max_concurrent_users;
+      }
+    });
+
+    // Count active users
+    const countResult = await query(
+      `SELECT COUNT(*) as count 
+       FROM voters 
+       WHERE last_login_at > NOW() - INTERVAL '24 hours'`
+    );
+
+    const activeCount = parseInt(countResult.rows[0].count);
+
+    res.json({
+      success: true,
+      enabled: capacityEnabled,
+      maxUsers,
+      activeCount,
+      availableSlots: capacityEnabled
+        ? Math.max(0, maxUsers - activeCount)
+        : null,
+      isAtCapacity: capacityEnabled ? activeCount >= maxUsers : false,
+      utilizationPercent:
+        capacityEnabled && maxUsers > 0
+          ? Math.round((activeCount / maxUsers) * 100)
+          : 0,
+    });
+  } catch (error) {
+    console.error("Error fetching capacity status:", error);
+    res.status(500).json({ error: "Failed to fetch capacity status" });
+  }
+});
+
+// GET /api/admin/capacity-settings - Get capacity testing settings
+router.get("/capacity-settings", async (req, res) => {
+  try {
+    const result = await query(
+      "SELECT key, value FROM system_settings WHERE key IN ('capacity_testing_enabled', 'max_concurrent_users')"
+    );
+
+    let capacityEnabled = false;
+    let maxUsers = 2;
+
+    result.rows.forEach((row) => {
+      if (row.key === "capacity_testing_enabled") {
+        capacityEnabled = row.value === "true" || row.value === true;
+      } else if (row.key === "max_concurrent_users") {
+        maxUsers = parseInt(row.value, 10);
+      }
+    });
+
+    res.json({
+      success: true,
+      capacityTestingEnabled: capacityEnabled,
+      maxConcurrentUsers: maxUsers,
+    });
+  } catch (error) {
+    console.error("Error fetching capacity settings:", error);
+    res.status(500).json({ error: "Failed to fetch capacity settings" });
+  }
+});
+
+// POST /api/admin/capacity-settings - Save capacity testing settings
+router.post("/capacity-settings", async (req, res) => {
+  try {
+    const { capacityTestingEnabled, maxConcurrentUsers } = req.body;
+
+    console.log("💾 Saving capacity settings:", {
+      capacityTestingEnabled,
+      maxConcurrentUsers,
+    });
+
+    // Upsert capacity_testing_enabled
+    await query(
+      `INSERT INTO system_settings (key, value, updated_at)
+       VALUES ('capacity_testing_enabled', $1, NOW())
+       ON CONFLICT (key) 
+       DO UPDATE SET value = $1, updated_at = NOW()`,
+      [capacityTestingEnabled ? "true" : "false"]
+    );
+
+    // Upsert max_concurrent_users
+    await query(
+      `INSERT INTO system_settings (key, value, updated_at)
+       VALUES ('max_concurrent_users', $1, NOW())
+       ON CONFLICT (key) 
+       DO UPDATE SET value = $1, updated_at = NOW()`,
+      [maxConcurrentUsers.toString()]
+    );
+
+    console.log("✅ Capacity settings saved successfully");
+
+    res.json({
+      success: true,
+      message: "Capacity settings saved successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error saving capacity settings:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to save capacity settings",
+    });
+  }
+});
+
+// POST /api/admin/clear-sessions - Clear all active login sessions (for capacity testing)
+router.post("/clear-sessions", async (req, res) => {
+  try {
+    console.log("🔄 Clearing all active login sessions...");
+
+    // Clear all last_login_at timestamps
+    await query("UPDATE voters SET last_login_at = NULL");
+
+    console.log("✅ All active sessions cleared!");
+
+    res.json({
+      success: true,
+      message: "All active sessions cleared successfully",
+    });
+  } catch (error) {
+    console.error("❌ Error clearing sessions:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to clear sessions",
+    });
   }
 });
 

@@ -178,4 +178,38 @@ router.put("/:id", requireAdmin, async (req: AuthRequest, res) => {
   }
 });
 
+// Delete a category (admin only)
+router.delete("/:id", requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const { id } = req.params;
+
+    // Get category name for audit log before deleting
+    const categoryResult = await query(
+      "SELECT name FROM categories WHERE id = $1",
+      [id]
+    );
+
+    if (categoryResult.rows.length === 0) {
+      return res.status(404).json({ error: "Category not found" });
+    }
+
+    const categoryName = categoryResult.rows[0].name;
+
+    // Delete the category
+    await query("DELETE FROM categories WHERE id = $1", [id]);
+
+    // Log audit activity
+    await query(
+      `INSERT INTO audit_logs (action, description, created_at)
+       VALUES ('category_deleted', $1, NOW())`,
+      [`Category "${categoryName}" deleted`]
+    );
+
+    res.json({ success: true, message: "Category deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting category:", error);
+    res.status(500).json({ error: "Failed to delete category" });
+  }
+});
+
 export default router;

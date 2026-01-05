@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { HomePage } from "./components/HomePage";
 import { LoginPage } from "./components/LoginPage";
 import { RegisterPage } from "./components/RegisterPage";
@@ -6,6 +6,7 @@ import { AdminDashboard } from "./components/AdminDashboard";
 import { AboutPage } from "./components/AboutPage";
 import { ContactPage } from "./components/ContactPage";
 import { ResultsPage } from "./components/ResultsPage";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { VoterRegistrationPage } from "./components/VoterRegistrationPage";
 import { NewResultsPage } from "./components/NewResultsPage";
@@ -34,11 +35,29 @@ export default function App() {
     setCurrentPage(page);
   };
 
+  // Session heartbeat - DISABLED (not needed for admin)
+  // useEffect(() => {
+  //   const sendHeartbeat = async () => {
+  //     try {
+  //       await fetch("http://localhost:3001/api/session/heartbeat", {
+  //         method: "POST",
+  //         credentials: "include",
+  //       });
+  //     } catch (error) {
+  //       // Silently fail
+  //     }
+  //   };
+  //   const interval = setInterval(sendHeartbeat, 30000);
+  //   return () => clearInterval(interval);
+  // }, []);
+
   return (
     <>
       {currentPage === "home" && <HomePage onNavigate={handleNavigate} />}
       {currentPage === "admin" && (
-        <AdminDashboard onNavigate={handleNavigate} />
+        <ErrorBoundary>
+          <AdminDashboard onNavigate={handleNavigate} />
+        </ErrorBoundary>
       )}
       {currentPage === "results" && <ResultsPage onNavigate={handleNavigate} />}
       {currentPage === "new-results" && (
@@ -67,9 +86,6 @@ export default function App() {
       )}
       {currentPage === "system-settings" && (
         <SystemSettingsPage onNavigate={handleNavigate} />
-      )}
-      {currentPage === "forgot-password" && (
-        <ForgotPasswordPage onNavigate={handleNavigate} />
       )}
       {currentPage === "elections" && <VotePage onNavigate={handleNavigate} />}
       {currentPage === "voter" && <SettingsPage onNavigate={handleNavigate} />}

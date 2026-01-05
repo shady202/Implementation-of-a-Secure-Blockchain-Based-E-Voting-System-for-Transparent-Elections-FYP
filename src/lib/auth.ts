@@ -5,8 +5,15 @@ import {
   isAdmin as checkIsAdmin,
   isLoggedIn,
 } from "./session";
+import { getApiBaseUrlWithoutSuffix } from "./api-config";
 
-const API_URL = "http://localhost:3001";
+// API URL - now automatically detects correct IP!
+const API_URL = getApiBaseUrlWithoutSuffix();
+
+// Debug: Log the detected API URL
+console.log("🔍 AUTH DEBUG - Detected API_URL:", API_URL);
+console.log("🔍 AUTH DEBUG - Current hostname:", window.location.hostname);
+console.log("🔍 AUTH DEBUG - Current full URL:", window.location.href);
 
 export type Role = "student" | "admin";
 export type Provider = "local" | "google" | "microsoft";
@@ -44,7 +51,7 @@ export const loginUser = async (credentials: {
   password: string;
 }): Promise<AuthResponse> => {
   try {
-    const response = await fetch("http://localhost:3001/api/voters/login", {
+    const response = await fetch(`${API_URL}/api/voters/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -99,7 +106,7 @@ export const loginAdmin = async (credentials: {
   password: string;
 }): Promise<AuthResponse> => {
   try {
-    const response = await fetch("http://localhost:3001/api/admin/login", {
+    const response = await fetch(`${API_URL}/api/admin/login`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -117,7 +124,7 @@ export const loginAdmin = async (credentials: {
     }
 
     const user: User = {
-      id: data.admin.id,
+      id: data.admin.userId || data.admin.user_id, // Use userId (admin-001) not database id
       email: data.admin.email,
       firstName: data.admin.firstName || "Admin",
       lastName: data.admin.lastName || "User",
@@ -134,7 +141,8 @@ export const loginAdmin = async (credentials: {
       walletAddress: data.admin.walletAddress,
     };
 
-    const token = data.token || `admin_token_${data.admin.id}_${Date.now()}`;
+    const token =
+      data.token || `admin_token_${data.admin.userId}_${Date.now()}`;
     setSession(userWithWallet as any, token); // Store with wallet address
 
     return {
@@ -167,6 +175,7 @@ export const registerUser = async (data: any): Promise<AuthResponse> => {
         studentId: data.studentId,
         fullName,
         department: data.faculty, // Map 'faculty' to 'department' for backend
+        year: data.year, // Send year of study to backend
       }),
     });
 

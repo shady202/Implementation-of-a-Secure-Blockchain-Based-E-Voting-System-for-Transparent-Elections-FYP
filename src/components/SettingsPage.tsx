@@ -66,6 +66,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
   const [user, setUser] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
+  const [currentMetaMaskWallet, setCurrentMetaMaskWallet] = useState("");
+  const [walletsMatch, setWalletsMatch] = useState(true);
   const [votingHistory, setVotingHistory] = useState<VotingHistory[]>([]);
 
   const [stats, setStats] = useState({
@@ -79,19 +81,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     firstName: "",
     lastName: "",
     email: "",
-    phone: "",
     studentId: "",
     department: "",
     yearOfStudy: "",
-    program: "",
-  });
-
-  const [notificationSettings, setNotificationSettings] = useState({
-    emailNewElections: true,
-    emailDeadlines: true,
-    emailResults: true,
-    emailUpdates: false,
-    smsAlerts: false,
   });
 
   const [securitySettings, setSecuritySettings] = useState({
@@ -101,14 +93,21 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
   const currentUser = isLoggedIn();
 
-  // Faculty mapping (same as VoterRegistrationPage)
+  // Faculty mapping (same as RegisterPage)
   const facultyMap: Record<string, string> = {
     computing: "School of Computing",
     engineering: "School of Engineering",
-    business: "Accounting, Finance, & Quantitative Studies",
-    accounting: "Accounting, Finance, & Quantitative Studies",
-    foundation: "Foundation Studies",
+    business: "School of Business",
+    media: "School of Media & Design",
+    science: "School of Science",
   };
+
+  // Re-check wallet match when registered wallet is loaded
+  useEffect(() => {
+    if (walletAddress) {
+      checkCurrentMetaMaskWallet();
+    }
+  }, [walletAddress]);
 
   useEffect(() => {
     // Check if user is authenticated
@@ -140,27 +139,70 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
         firstName: userData.firstName || "",
         lastName: userData.lastName || "",
         email: userData.email || "",
-        phone: userData.phone || "",
         studentId: userData.studentId || "",
         department: facultyFullName,
         yearOfStudy: userData.yearOfStudy || "",
-        program: userData.program || "",
       });
     }
   };
 
   const checkWalletConnection = async () => {
+    // Fetch registered wallet from database (not from MetaMask!)
+    const userData = getCurrentUser();
+    if (!userData || !userData.studentId) {
+      console.log("No user session found");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL}/voters/registered-wallet/${
+          userData.studentId
+        }`
+      );
+      const data = await response.json();
+
+      if (data.success && data.walletAddress) {
+        console.log(
+          "✅ Fetched registered wallet from database:",
+          data.walletAddress
+        );
+        setWalletAddress(data.walletAddress);
+        setStats((prev) => ({ ...prev, walletConnected: true }));
+      } else {
+        console.log("ℹ️  No wallet registered for this user");
+        setWalletAddress("");
+        setStats((prev) => ({ ...prev, walletConnected: false }));
+      }
+    } catch (err) {
+      console.error("Error fetching registered wallet:", err);
+    }
+  };
+
+  const checkCurrentMetaMaskWallet = async () => {
     if (typeof window.ethereum !== "undefined") {
       try {
         const accounts = await window.ethereum.request({
           method: "eth_accounts",
         });
         if (accounts.length > 0) {
-          setWalletAddress(accounts[0]);
-          setStats((prev) => ({ ...prev, walletConnected: true }));
+          const currentWallet = accounts[0];
+          setCurrentMetaMaskWallet(currentWallet);
+
+          // Check if current MetaMask wallet matches registered wallet
+          if (walletAddress) {
+            const match =
+              currentWallet.toLowerCase() === walletAddress.toLowerCase();
+            setWalletsMatch(match);
+            console.log(
+              match
+                ? "✅ MetaMask wallet matches registered wallet"
+                : "⚠️  MetaMask wallet does NOT match registered wallet"
+            );
+          }
         }
       } catch (err) {
-        console.error("Error checking wallet connection:", err);
+        console.error("Error checking MetaMask wallet:", err);
       }
     }
   };
@@ -202,18 +244,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     } catch (error) {
       console.error("Error saving profile:", error);
       toast.error("Failed to update profile");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveNotifications = async () => {
-    setSaving(true);
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Notification preferences saved!");
-    } catch (error) {
-      toast.error("Failed to save preferences");
     } finally {
       setSaving(false);
     }
@@ -387,36 +417,21 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
           {/* Settings Tabs */}
           <Tabs defaultValue="profile" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8 h-auto">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8 h-auto">
               <TabsTrigger value="profile" className="py-3">
                 <User className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Profile</span>
                 <span className="sm:hidden">Profile</span>
-              </TabsTrigger>
-              <TabsTrigger value="history" className="py-3">
-                <Vote className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Voting History</span>
-                <span className="sm:hidden">History</span>
               </TabsTrigger>
               <TabsTrigger value="wallet" className="py-3">
                 <Wallet className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Wallet & Security</span>
                 <span className="sm:hidden">Wallet</span>
               </TabsTrigger>
-              <TabsTrigger value="notifications" className="py-3">
-                <Bell className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Notifications</span>
-                <span className="sm:hidden">Alerts</span>
-              </TabsTrigger>
               <TabsTrigger value="preferences" className="py-3">
                 <Globe className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Preferences</span>
                 <span className="sm:hidden">Settings</span>
-              </TabsTrigger>
-              <TabsTrigger value="achievements" className="py-3">
-                <Award className="h-4 w-4 mr-2" />
-                <span className="hidden sm:inline">Achievements</span>
-                <span className="sm:hidden">Badges</span>
               </TabsTrigger>
             </TabsList>
 
@@ -461,13 +476,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Input
                           id="firstName"
                           value={profileData.firstName}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              firstName: e.target.value,
-                            })
-                          }
-                          placeholder="Enter your first name"
+                          readOnly
+                          disabled
+                          className="bg-slate-100 cursor-not-allowed"
                         />
                       </div>
                       <div className="space-y-2">
@@ -475,13 +486,9 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         <Input
                           id="lastName"
                           value={profileData.lastName}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              lastName: e.target.value,
-                            })
-                          }
-                          placeholder="Enter your last name"
+                          readOnly
+                          disabled
+                          className="bg-slate-100 cursor-not-allowed"
                         />
                       </div>
                     </div>
@@ -493,54 +500,24 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                       <Input
                         id="studentId"
                         value={profileData.studentId}
-                        onChange={(e) =>
-                          setProfileData({
-                            ...profileData,
-                            studentId: e.target.value,
-                          })
-                        }
-                        placeholder="e.g., TP12345"
+                        readOnly
+                        disabled
+                        className="bg-slate-100 cursor-not-allowed"
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="email">Email Address *</Label>
-                        <div className="relative">
-                          <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                          <Input
-                            id="email"
-                            type="email"
-                            value={profileData.email}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                email: e.target.value,
-                              })
-                            }
-                            placeholder="your.email@student.apu.edu.my"
-                            className="pl-10"
-                          />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="phone">Phone Number</Label>
-                        <div className="relative">
-                          <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                          <Input
-                            id="phone"
-                            type="tel"
-                            value={profileData.phone}
-                            onChange={(e) =>
-                              setProfileData({
-                                ...profileData,
-                                phone: e.target.value,
-                              })
-                            }
-                            placeholder="+60 12-345 6789"
-                            className="pl-10"
-                          />
-                        </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email Address *</Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                        <Input
+                          id="email"
+                          type="email"
+                          value={profileData.email}
+                          readOnly
+                          disabled
+                          className="pl-10 bg-slate-100 cursor-not-allowed"
+                        />
                       </div>
                     </div>
                   </div>
@@ -551,155 +528,48 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   <div className="space-y-4">
                     <h3 className="text-slate-900">Academic Information</h3>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="department">Department / Faculty *</Label>
-                      <Select
-                        value={profileData.department}
-                        onValueChange={(value) =>
-                          setProfileData({ ...profileData, department: value })
-                        }
-                      >
-                        <SelectTrigger id="department">
-                          <SelectValue placeholder="Select your department" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="computer-science">
-                            School of Computing
-                          </SelectItem>
-                          <SelectItem value="engineering">
-                            School of Engineering
-                          </SelectItem>
-                          <SelectItem value="business">
-                            School of Business
-                          </SelectItem>
-                          <SelectItem value="accounting">
-                            School of Accounting & Finance
-                          </SelectItem>
-                          <SelectItem value="foundation">
-                            Foundation Studies
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="program">Program / Course</Label>
+                        <Label htmlFor="department">Faculty *</Label>
                         <Input
-                          id="program"
-                          value={profileData.program}
-                          onChange={(e) =>
-                            setProfileData({
-                              ...profileData,
-                              program: e.target.value,
-                            })
-                          }
-                          placeholder="e.g., BSc (Hons) in Computer Science"
+                          id="department"
+                          value={profileData.department}
+                          readOnly
+                          disabled
+                          className="bg-slate-100 cursor-not-allowed"
                         />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="yearOfStudy">Year of Study</Label>
-                        <Select
-                          value={profileData.yearOfStudy}
-                          onValueChange={(value) =>
-                            setProfileData({
-                              ...profileData,
-                              yearOfStudy: value,
-                            })
+                        <Input
+                          id="yearOfStudy"
+                          value={
+                            profileData.yearOfStudy === "1"
+                              ? "First Year"
+                              : profileData.yearOfStudy === "2"
+                              ? "Second Year"
+                              : profileData.yearOfStudy === "3"
+                              ? "Third Year"
+                              : profileData.yearOfStudy === "4"
+                              ? "Fourth Year"
+                              : profileData.yearOfStudy === "5"
+                              ? "Postgraduate"
+                              : profileData.yearOfStudy
                           }
-                        >
-                          <SelectTrigger id="yearOfStudy">
-                            <SelectValue placeholder="Select year" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="1">Year 1</SelectItem>
-                            <SelectItem value="2">Year 2</SelectItem>
-                            <SelectItem value="3">Year 3</SelectItem>
-                            <SelectItem value="4">Year 4</SelectItem>
-                          </SelectContent>
-                        </Select>
+                          readOnly
+                          disabled
+                          className="bg-slate-100 cursor-not-allowed"
+                        />
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex justify-end pt-4">
-                    <Button
-                      onClick={handleSaveProfile}
-                      disabled={saving}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {saving ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" />
-                          Save Changes
-                        </>
-                      )}
-                    </Button>
-                  </div>
+                  {/* Save button removed - data is read-only from database */}
                 </CardContent>
               </Card>
             </TabsContent>
 
-            {/* Voting History Tab */}
-            <TabsContent value="history" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Voting History</CardTitle>
-                  <CardDescription>
-                    All your past voting activities on the blockchain
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {votingHistory.length > 0 ? (
-                    <div className="space-y-4">
-                      {votingHistory.map((vote) => (
-                        <div
-                          key={vote.id}
-                          className="flex items-center justify-between p-4 border rounded-lg"
-                        >
-                          <div className="flex items-start gap-4">
-                            <div className="p-2 bg-emerald-50 rounded-lg">
-                              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                            </div>
-                            <div>
-                              <h3 className="font-semibold text-slate-900">
-                                {vote.electionTitle}
-                              </h3>
-                              <p className="text-sm text-slate-600">
-                                Voted on{" "}
-                                {new Date(vote.date).toLocaleDateString()}
-                              </p>
-                              <p className="text-xs text-slate-500 font-mono mt-1">
-                                TX: {vote.transactionHash}
-                              </p>
-                            </div>
-                          </div>
-                          <Badge className="bg-emerald-500">
-                            {vote.status}
-                          </Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12">
-                      <Vote className="h-12 w-12 text-slate-300 mb-4" />
-                      <p className="text-slate-600">No voting history yet</p>
-                      <Button
-                        className="mt-4 bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => onNavigate("vote")}
-                      >
-                        Cast Your First Vote
-                      </Button>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </TabsContent>
+            {/* History tab removed - use My Votes page instead */}
 
             {/* Wallet & Security Tab */}
             <TabsContent value="wallet">
@@ -717,35 +587,66 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {walletAddress ? (
-                      <Alert className="bg-emerald-50 border-emerald-200">
-                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                        <AlertDescription className="ml-2">
-                          <div className="space-y-1">
-                            <p className="text-sm text-emerald-800">
-                              Wallet Connected Successfully
-                            </p>
-                            <p className="text-xs text-emerald-700 font-mono break-all">
-                              {walletAddress}
-                            </p>
-                          </div>
-                        </AlertDescription>
-                      </Alert>
-                    ) : (
-                      <Alert className="bg-amber-50 border-amber-200">
-                        <AlertCircle className="h-4 w-4 text-amber-600" />
-                        <AlertDescription className="ml-2 text-amber-800">
-                          No wallet connected. Connect your MetaMask wallet to
-                          participate in voting.
-                        </AlertDescription>
-                      </Alert>
-                    )}
-
                     <div className="flex gap-3">
                       {walletAddress ? (
-                        <Button variant="outline" disabled>
-                          Wallet Connected
-                        </Button>
+                        <Alert
+                          className={
+                            walletsMatch
+                              ? "bg-emerald-50 border-emerald-200"
+                              : "bg-red-50 border-red-200"
+                          }
+                        >
+                          {walletsMatch ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-red-600" />
+                          )}
+                          <AlertDescription>
+                            <p
+                              className={`font-semibold ${
+                                walletsMatch
+                                  ? "text-emerald-900"
+                                  : "text-red-900"
+                              }`}
+                            >
+                              {walletsMatch
+                                ? "Registered Wallet"
+                                : "Wallet Mismatch"}
+                            </p>
+                            <p
+                              className={`font-mono text-xs mt-2 break-all ${
+                                walletsMatch
+                                  ? "text-emerald-900"
+                                  : "text-red-900"
+                              }`}
+                            >
+                              {walletAddress}
+                            </p>
+                            {walletsMatch ? (
+                              <>
+                                <p className="text-xs mt-2 text-emerald-700">
+                                  This is your registered wallet. It cannot be
+                                  changed.
+                                </p>
+                                <p className="text-xs mt-1 text-emerald-700">
+                                  ✅ You can vote in all elections with this
+                                  wallet.
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-xs mt-2 text-red-700">
+                                  ⚠️ Your current MetaMask wallet does not match
+                                  your registered wallet.
+                                </p>
+                                <p className="text-xs mt-1 text-red-700">
+                                  Please switch to your registered wallet to
+                                  vote.
+                                </p>
+                              </>
+                            )}
+                          </AlertDescription>
+                        </Alert>
                       ) : (
                         <Button
                           onClick={handleConnectWallet}
@@ -755,395 +656,169 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                           Connect MetaMask
                         </Button>
                       )}
-                      <Button
-                        variant="outline"
-                        onClick={() => onNavigate("voter-registration")}
-                      >
-                        View Wallet Details
-                      </Button>
                     </div>
 
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-4">
                       <h4 className="text-sm text-blue-900 mb-2">Important:</h4>
                       <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                         <li>
+                          You must use a MetaMask wallet to participate in
+                          voting
+                        </li>
+                        <li>
                           Your wallet address is used to verify your identity
                         </li>
-                        <li>You can only vote once per election per wallet</li>
+                        <li>
+                          You must be connected to the Hoodi Network Testnet
+                        </li>
+                        <li>
+                          Ensure you have a minimum of 0.01 ETH in your wallet
+                          for transaction fees
+                        </li>
+                        <li>Each wallet can only vote once per election</li>
+                        <li>
+                          You cannot vote if you change your wallet address -
+                          votes are tied to the registered wallet
+                        </li>
                         <li>Never share your wallet private key with anyone</li>
-                        <li>Ensure you have some ETH for transaction fees</li>
                       </ul>
                     </div>
                   </CardContent>
                 </Card>
 
-                {/* Security Settings */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Shield className="h-5 w-5 text-emerald-600" />
-                      Security Settings
-                    </CardTitle>
-                    <CardDescription>
-                      Manage your account security and privacy preferences
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <Label>Two-Factor Authentication</Label>
-                        <p className="text-sm text-slate-600">
-                          Add an extra layer of security to your account
-                        </p>
-                      </div>
-                      <Switch
-                        checked={securitySettings.twoFactorAuth}
-                        onCheckedChange={(checked) =>
-                          setSecuritySettings({
-                            ...securitySettings,
-                            twoFactorAuth: checked,
-                          })
-                        }
-                        disabled
-                      />
-                    </div>
-
-                    <Separator />
-
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <Label>Public Profile</Label>
-                        <p className="text-sm text-slate-600">
-                          Allow other students to view your profile
-                        </p>
-                      </div>
-                      <Switch
-                        checked={securitySettings.publicProfile}
-                        onCheckedChange={(checked) =>
-                          setSecuritySettings({
-                            ...securitySettings,
-                            publicProfile: checked,
-                          })
-                        }
-                      />
-                    </div>
-
-                    <Separator />
-
-                    <div className="space-y-3">
-                      <Label>Password</Label>
-                      <p className="text-sm text-slate-600 mb-3">
-                        Change your password to keep your account secure
-                      </p>
-                      <Button variant="outline" disabled>
-                        <Lock className="mr-2 h-4 w-4" />
-                        Change Password (Coming Soon)
-                      </Button>
-                    </div>
-
-                    <div className="flex justify-end pt-4">
-                      <Button
-                        onClick={handleSaveSecurity}
-                        disabled={saving}
-                        className="bg-emerald-600 hover:bg-emerald-700"
-                      >
-                        {saving ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Saving...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="mr-2 h-4 w-4" />
-                            Save Security Settings
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
+                {/* Security Settings removed - not implemented */}
               </div>
-            </TabsContent>
-
-            {/* Notifications Tab */}
-            <TabsContent value="notifications">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Bell className="h-5 w-5 text-emerald-600" />
-                    Notification Preferences
-                  </CardTitle>
-                  <CardDescription>
-                    Choose how you want to receive updates about elections and
-                    voting
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-4">
-                    <h3 className="text-slate-900">Email Notifications</h3>
-
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <Label>New Elections</Label>
-                          <p className="text-sm text-slate-600">
-                            Get notified when new elections are announced
-                          </p>
-                        </div>
-                        <Switch
-                          checked={notificationSettings.emailNewElections}
-                          onCheckedChange={(checked) =>
-                            setNotificationSettings({
-                              ...notificationSettings,
-                              emailNewElections: checked,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <Label>Voting Deadlines</Label>
-                          <p className="text-sm text-slate-600">
-                            Reminders about upcoming voting deadlines
-                          </p>
-                        </div>
-                        <Switch
-                          checked={notificationSettings.emailDeadlines}
-                          onCheckedChange={(checked) =>
-                            setNotificationSettings({
-                              ...notificationSettings,
-                              emailDeadlines: checked,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <Label>Election Results</Label>
-                          <p className="text-sm text-slate-600">
-                            Get notified when election results are announced
-                          </p>
-                        </div>
-                        <Switch
-                          checked={notificationSettings.emailResults}
-                          onCheckedChange={(checked) =>
-                            setNotificationSettings({
-                              ...notificationSettings,
-                              emailResults: checked,
-                            })
-                          }
-                        />
-                      </div>
-
-                      <Separator />
-
-                      <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                          <Label>System Updates</Label>
-                          <p className="text-sm text-slate-600">
-                            News about APU VOTE features and improvements
-                          </p>
-                        </div>
-                        <Switch
-                          checked={notificationSettings.emailUpdates}
-                          onCheckedChange={(checked) =>
-                            setNotificationSettings({
-                              ...notificationSettings,
-                              emailUpdates: checked,
-                            })
-                          }
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <h3 className="text-slate-900">SMS Notifications</h3>
-
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <Label>SMS Alerts</Label>
-                        <p className="text-sm text-slate-600">
-                          Receive text messages for critical voting reminders
-                        </p>
-                      </div>
-                      <Switch
-                        checked={notificationSettings.smsAlerts}
-                        onCheckedChange={(checked) =>
-                          setNotificationSettings({
-                            ...notificationSettings,
-                            smsAlerts: checked,
-                          })
-                        }
-                        disabled
-                      />
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      SMS notifications require phone number verification
-                      (Coming soon)
-                    </p>
-                  </div>
-
-                  <div className="flex justify-end pt-4">
-                    <Button
-                      onClick={handleSaveNotifications}
-                      disabled={saving}
-                      className="bg-emerald-600 hover:bg-emerald-700"
-                    >
-                      {saving ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <Save className="mr-2 h-4 w-4" />
-                          Save Preferences
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Preferences Tab */}
             <TabsContent value="preferences">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Globe className="h-5 w-5 text-emerald-600" />
-                    General Preferences
-                  </CardTitle>
-                  <CardDescription>
-                    Customize your APU VOTE experience
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="language">Language</Label>
-                    <Select defaultValue="english">
-                      <SelectTrigger id="language">
-                        <SelectValue placeholder="Select language" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="english">English</SelectItem>
-                        <SelectItem value="malay">Bahasa Melayu</SelectItem>
-                        <SelectItem value="chinese">中文</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-slate-500">
-                      Choose your preferred language for the interface
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <Label htmlFor="timezone">Timezone</Label>
-                    <Select defaultValue="malaysia">
-                      <SelectTrigger id="timezone">
-                        <SelectValue placeholder="Select timezone" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="malaysia">
-                          Malaysia (GMT+8)
-                        </SelectItem>
-                        <SelectItem value="singapore">
-                          Singapore (GMT+8)
-                        </SelectItem>
-                        <SelectItem value="thailand">
-                          Thailand (GMT+7)
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <p className="text-xs text-slate-500">
-                      All dates and times will be shown in this timezone
-                    </p>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-4">
-                    <Label>Privacy</Label>
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <p className="text-sm text-blue-900 mb-2">
-                        Your voting choices are always private and encrypted on
-                        the blockchain.
-                      </p>
-                      <p className="text-xs text-blue-800">
-                        Only you can see your voting history. Election results
-                        show aggregate vote counts without revealing individual
-                        votes.
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Globe className="h-5 w-5 text-emerald-600" />
+                      General Preferences
+                    </CardTitle>
+                    <CardDescription>
+                      Customize your APU VOTE experience
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="language">Language</Label>
+                      <Select defaultValue="english">
+                        <SelectTrigger id="language">
+                          <SelectValue placeholder="Select language" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="english">English</SelectItem>
+                          <SelectItem value="malay">Bahasa Melayu</SelectItem>
+                          <SelectItem value="chinese">中文</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-500">
+                        Choose your preferred language for the interface
                       </p>
                     </div>
-                  </div>
 
-                  <div className="flex justify-end pt-4">
-                    <Button disabled variant="outline">
-                      Save Preferences (Coming Soon)
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
+                    <Separator />
 
-            {/* Achievements Tab */}
-            <TabsContent value="achievements" className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Your Achievements</CardTitle>
-                  <CardDescription>
-                    Badges earned through active participation
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50">
-                      <Award className="h-12 w-12 text-emerald-600 mb-2" />
-                      <h3 className="font-semibold text-slate-900 text-center">
-                        First Vote
-                      </h3>
-                      <p className="text-sm text-slate-600 text-center mt-1">
-                        Cast your first vote
+                    <div className="space-y-2">
+                      <Label htmlFor="timezone">Timezone</Label>
+                      <Select defaultValue="malaysia">
+                        <SelectTrigger id="timezone">
+                          <SelectValue placeholder="Select timezone" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="malaysia">
+                            Malaysia (GMT+8)
+                          </SelectItem>
+                          <SelectItem value="singapore">
+                            Singapore (GMT+8)
+                          </SelectItem>
+                          <SelectItem value="thailand">
+                            Thailand (GMT+7)
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-slate-500">
+                        All dates and times will be shown in this timezone
                       </p>
-                      <Badge className="mt-2 bg-emerald-500">Earned</Badge>
                     </div>
-                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
-                      <TrendingUp className="h-12 w-12 text-slate-400 mb-2" />
-                      <h3 className="font-semibold text-slate-900 text-center">
-                        Active Voter
-                      </h3>
-                      <p className="text-sm text-slate-600 text-center mt-1">
-                        Vote in 5 elections
-                      </p>
-                      <Badge variant="outline" className="mt-2">
-                        Locked
-                      </Badge>
+
+                    <Separator />
+
+                    <div className="space-y-4">
+                      <Label>Privacy</Label>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-blue-900 mb-2">
+                          Your voting choices are always private and encrypted
+                          on the blockchain.
+                        </p>
+                        <p className="text-xs text-blue-800">
+                          Only you can see your voting history. Election results
+                          show aggregate vote counts without revealing individual
+                          votes.
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
-                      <Shield className="h-12 w-12 text-slate-400 mb-2" />
-                      <h3 className="font-semibold text-slate-900 text-center">
-                        Verified Voter
-                      </h3>
-                      <p className="text-sm text-slate-600 text-center mt-1">
-                        Complete wallet verification
-                      </p>
-                      <Badge variant="outline" className="mt-2">
-                        Locked
-                      </Badge>
+
+                    <div className="flex justify-end pt-4">
+                      <Button disabled variant="outline">
+                        Save Preferences (Coming Soon)
+                      </Button>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                {/* Achievements Section */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Your Achievements</CardTitle>
+                    <CardDescription>
+                      Badges earned through active participation
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <div className="flex flex-col items-center justify-center p-6 border rounded-lg bg-gradient-to-br from-emerald-50 to-teal-50">
+                        <Award className="h-12 w-12 text-emerald-600 mb-2" />
+                        <h3 className="font-semibold text-slate-900 text-center">
+                          First Vote
+                        </h3>
+                        <p className="text-sm text-slate-600 text-center mt-1">
+                          Cast your first vote
+                        </p>
+                        <Badge className="mt-2 bg-emerald-500">Earned</Badge>
+                      </div>
+                      <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
+                        <TrendingUp className="h-12 w-12 text-slate-400 mb-2" />
+                        <h3 className="font-semibold text-slate-900 text-center">
+                          Active Voter
+                        </h3>
+                        <p className="text-sm text-slate-600 text-center mt-1">
+                          Vote in 5 elections
+                        </p>
+                        <Badge variant="outline" className="mt-2">
+                          Locked
+                        </Badge>
+                      </div>
+                      <div className="flex flex-col items-center justify-center p-6 border rounded-lg opacity-50">
+                        <Shield className="h-12 w-12 text-slate-400 mb-2" />
+                        <h3 className="font-semibold text-slate-900 text-center">
+                          Verified Voter
+                        </h3>
+                        <p className="text-sm text-slate-600 text-center mt-1">
+                          Complete wallet verification
+                        </p>
+                        <Badge variant="outline" className="mt-2">
+                          Locked
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         </div>

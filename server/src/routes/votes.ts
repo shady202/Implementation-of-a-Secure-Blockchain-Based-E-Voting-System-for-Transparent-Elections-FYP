@@ -19,13 +19,15 @@ router.post("/save", async (req: Request, res: Response) => {
 
     // Get election details (if exists)
     let electionTitle = "General Election";
+    let electionDescription = "";
     if (electionId) {
       const electionResult = await query(
-        "SELECT title FROM elections WHERE id = $1",
+        "SELECT title, description FROM elections WHERE id = $1",
         [electionId]
       );
       if (electionResult.rows.length > 0) {
         electionTitle = electionResult.rows[0].title;
+        electionDescription = electionResult.rows[0].description || "";
       }
     }
 
@@ -109,7 +111,9 @@ router.post("/save", async (req: Request, res: Response) => {
             categoryName: v.categoryName || `Category ${v.categoryId}`,
             candidateName: v.candidateName || `Candidate ${v.candidateId}`,
           })),
-          votes[0]?.transactionHash || "N/A"
+          votes[0]?.transactionHash || "N/A",
+          electionTitle,
+          electionDescription
         ).catch((err) =>
           console.error("Email send error (non-critical):", err)
         );
@@ -144,22 +148,25 @@ router.get("/history/:walletAddress", async (req: Request, res: Response) => {
     }
 
     // Get all votes for this wallet, ordered by date (newest first)
+    // JOIN with elections table to get description
     const result = await query(
       `SELECT 
-        id,
-        election_id,
-        election_title,
-        category_id,
-        category_name,
-        candidate_id,
-        candidate_name,
-        candidate_party,
-        blockchain_tx_hash,
-        voted_at,
-        created_at
-      FROM vote_history
-      WHERE voter_wallet_address = $1
-      ORDER BY voted_at DESC`,
+        vh.id,
+        vh.election_id,
+        vh.election_title,
+        e.description as election_description,
+        vh.category_id,
+        vh.category_name,
+        vh.candidate_id,
+        vh.candidate_name,
+        vh.candidate_party,
+        vh.blockchain_tx_hash,
+        vh.voted_at,
+        vh.created_at
+      FROM vote_history vh
+      LEFT JOIN elections e ON vh.election_id = e.id
+      WHERE vh.voter_wallet_address = $1
+      ORDER BY vh.voted_at DESC`,
       [walletAddress]
     );
 
@@ -181,6 +188,7 @@ router.get("/history/:walletAddress", async (req: Request, res: Response) => {
         votesByElection[electionKey] = {
           electionId: vote.election_id,
           electionTitle: vote.election_title,
+          electionDescription: vote.election_description, // Include description
           votedAt: vote.voted_at,
           votes: [],
         };

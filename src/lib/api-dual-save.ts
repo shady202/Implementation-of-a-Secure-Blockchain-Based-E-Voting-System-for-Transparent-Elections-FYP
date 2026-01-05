@@ -11,9 +11,9 @@ import {
   createCategory as createCategoryOnChain,
   addCandidate as addCandidateOnChain,
 } from "./blockchain";
+import { API_BASE_URL } from "./api-config";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+// API Base URL - now automatically detects correct IP!
 
 // Get current user ID from localStorage (temporary auth)
 function getCurrentUserId(): string | null {

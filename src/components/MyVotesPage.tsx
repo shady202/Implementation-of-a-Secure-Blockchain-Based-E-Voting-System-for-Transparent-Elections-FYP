@@ -1,5 +1,11 @@
 import { useState, useEffect } from "react";
 import { VoteReceipt } from "../lib/blockchain";
+
+// Extended interface to include election title and description
+interface ExtendedVoteReceipt extends VoteReceipt {
+  electionTitle?: string;
+  electionDescription?: string;
+}
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import {
   CheckCircle2,
@@ -8,24 +14,31 @@ import {
   ArrowLeft,
   Loader2,
   Receipt,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 import { UserNav } from "./UserNav";
-import { isLoggedIn } from "../lib/session";
+import { isLoggedIn, getCurrentUser } from "../lib/session";
 import { ethers } from "ethers";
 
 const apuLogo = "/apu-logo.png";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+).replace(/\/api$/, "");
 
 interface MyVotesPageProps {
   onNavigate: (page: string) => void;
 }
 
 export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
-  const [receipts, setReceipts] = useState<VoteReceipt[]>([]);
+  const [receipts, setReceipts] = useState<ExtendedVoteReceipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [notRegistered, setNotRegistered] = useState(false);
-  const currentUser = isLoggedIn();
+  const [walletMismatch, setWalletMismatch] = useState(false);
+  const [walletMismatchMessage, setWalletMismatchMessage] = useState("");
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const currentUser = getCurrentUser();
 
   useEffect(() => {
     // Check if user is logged in
@@ -37,7 +50,7 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
     }
 
     loadReceipts();
-  }, []);
+  }, [refreshTrigger]);
 
   const loadReceipts = async () => {
     try {
@@ -51,9 +64,49 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
 
       console.log("📜 Loading vote history for wallet:", walletAddress);
 
+      // VALIDATE: Check if wallet matches registered account
+      try {
+        const validateResponse = await fetch(
+          `${API_URL}/api/voters/validate-wallet`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              walletAddress,
+              studentId: currentUser?.studentId,
+              email: currentUser?.email,
+            }),
+          }
+        );
+
+        const validateData = await validateResponse.json();
+
+        if (!validateData.valid) {
+          console.log("❌ WALLET-IDENTITY MISMATCH on My Votes page!");
+          setWalletMismatch(true);
+          setWalletMismatchMessage(
+            validateData.message ||
+              "This wallet doesn't match your registered account."
+          );
+          setLoading(false);
+          return;
+        }
+
+        console.log("✅ Wallet validated for My Votes page");
+        setWalletMismatch(false);
+      } catch (validateErr) {
+        console.error("❌ Wallet validation failed:", validateErr);
+        setWalletMismatch(true);
+        setWalletMismatchMessage(
+          "Failed to validate wallet. Please ensure you're using your registered wallet."
+        );
+        setLoading(false);
+        return;
+      }
+
       // Fetch vote history from DATABASE (lifetime, all elections)
       const response = await fetch(
-        `http://localhost:3001/api/votes/history/${walletAddress}`
+        `${API_URL}/api/votes/history/${walletAddress}`
       );
       const data = await response.json();
 
@@ -63,7 +116,7 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
         );
 
         // Convert database format to component format
-        const allReceipts: VoteReceipt[] = [];
+        const allReceipts: ExtendedVoteReceipt[] = [];
 
         for (const election of data.elections) {
           for (const vote of election.votes) {
@@ -74,6 +127,8 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
               candidateName: vote.candidateName,
               timestamp: new Date(vote.timestamp),
               transactionHash: vote.transactionHash,
+              electionTitle: election.electionTitle, // Use electionTitle from API
+              electionDescription: election.electionDescription, // Use electionDescription from API
             });
           }
         }
@@ -218,7 +273,49 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
               </CardContent>
             </Card>
 
-            {loading ? (
+            {walletMismatch ? (
+              <Card className="border-2 border-red-200 shadow-lg bg-red-50">
+                <CardContent className="py-16 text-center">
+                  <div className="bg-red-100 p-4 rounded-full w-fit mx-auto mb-4">
+                    <AlertCircle className="h-8 w-8 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                    Wallet Address Mismatch
+                  </h3>
+                  <p className="text-slate-600 max-w-md mx-auto mb-6">
+                    {walletMismatchMessage}
+                  </p>
+                  <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg max-w-md mx-auto mb-6">
+                    <p className="text-sm font-semibold text-blue-900 mb-2">
+                      How to fix this:
+                    </p>
+                    <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside text-left">
+                      <li>Open your MetaMask wallet</li>
+                      <li>Switch to the wallet you registered with</li>
+                      <li>Refresh this page</li>
+                    </ol>
+                  </div>
+                  <div className="flex gap-3 justify-center">
+                    <Button
+                      onClick={() => {
+                        setLoading(true);
+                        setWalletMismatch(false);
+                        setRefreshTrigger((prev) => prev + 1);
+                      }}
+                      className="bg-emerald-500 hover:bg-emerald-600 text-white"
+                    >
+                      Refresh Page
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => onNavigate("home")}
+                    >
+                      Return Home
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : loading ? (
               <div className="flex flex-col items-center justify-center space-y-6 py-24">
                 <div className="bg-emerald-500 rounded-full p-6 shadow-xl">
                   <Loader2 className="h-16 w-16 animate-spin text-white" />
@@ -281,7 +378,7 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
               <div className="grid gap-4">
                 {/* Group receipts by transaction hash */}
                 {(() => {
-                  const groupedByTx: Record<string, VoteReceipt[]> = {};
+                  const groupedByTx: Record<string, ExtendedVoteReceipt[]> = {};
                   receipts.forEach((receipt) => {
                     const txHash = receipt.transactionHash || "unknown";
                     if (!groupedByTx[txHash]) {
@@ -306,8 +403,13 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
                         </div>
                         <CardHeader className="pb-2">
                           <CardTitle className="text-lg flex items-center gap-2 text-slate-900">
-                            My Votes
+                            {txReceipts[0].electionTitle || "My Votes"}
                           </CardTitle>
+                          {txReceipts[0].electionDescription && (
+                            <p className="text-sm text-slate-600 mt-2">
+                              {txReceipts[0].electionDescription}
+                            </p>
+                          )}
                         </CardHeader>
                         <CardContent>
                           {/* List all votes in this transaction */}

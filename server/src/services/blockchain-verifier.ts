@@ -4,7 +4,7 @@ import { ethers } from "ethers";
 const RPC_URL = "https://rpc.hoodi.ethpandaops.io";
 // Read contract address from environment variable or use default
 const CONTRACT_ADDRESS =
-  process.env.CONTRACT_ADDRESS || "0x7E7B7e71ae3D0b1E2E75701929E6885c7b5a4B91";
+  process.env.CONTRACT_ADDRESS || "0x2DCa51f1095B2BbF7a5A1A8f6c0E7c7B8AD0e613";
 
 // Minimal ABI for verification (only events we need)
 const VERIFICATION_ABI = [

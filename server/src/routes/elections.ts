@@ -32,7 +32,8 @@ router.get("/election-settings", async (req, res) => {
 // POST /api/elections/create - Create new election in database
 router.post("/create", async (req, res) => {
   try {
-    const { title, startDate, endDate, showResultsDuringVoting } = req.body;
+    const { title, description, startDate, endDate, showResultsDuringVoting } =
+      req.body;
 
     if (!title || !startDate || !endDate) {
       return res
@@ -44,13 +45,14 @@ router.post("/create", async (req, res) => {
     const result = await query(
       `INSERT INTO elections (
         title,
+        description,
         start_time,
         end_time,
         is_active,
         created_at
-      ) VALUES ($1, $2, $3, false, NOW())
+      ) VALUES ($1, $2, $3, $4, false, NOW())
       RETURNING *`,
-      [title, startDate, endDate]
+      [title, description || null, startDate, endDate]
     );
 
     const election = result.rows[0];
@@ -161,11 +163,41 @@ router.post("/election-status", requireAdmin, async (req: AuthRequest, res) => {
   }
 });
 
+// Start election - set is_active = true in database
+router.post("/start", async (req, res) => {
+  try {
+    // Set the most recent election to active
+    await query(
+      `UPDATE elections 
+       SET is_active = true 
+       WHERE id = (SELECT id FROM elections ORDER BY created_at DESC LIMIT 1)`
+    );
+
+    res.json({ success: true, message: "Election activated in database" });
+  } catch (error) {
+    console.error("Error starting election:", error);
+    res.status(500).json({ error: "Failed to start election" });
+  }
+});
+
+// End election - set is_active = false in database
+router.post("/end", async (req, res) => {
+  try {
+    // Set all elections to inactive
+    await query(`UPDATE elections SET is_active = false`);
+
+    res.json({ success: true, message: "Election deactivated in database" });
+  } catch (error) {
+    console.error("Error ending election:", error);
+    res.status(500).json({ error: "Failed to end election" });
+  }
+});
+
 // Get active election
 router.get("/active", optionalAuth, async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, title, start_time, end_time, is_active, created_at
+      `SELECT id, title, description, start_time, end_time, is_active, created_at
        FROM elections
        WHERE is_active = true
        ORDER BY created_at DESC
@@ -187,7 +219,7 @@ router.get("/active", optionalAuth, async (req, res) => {
 router.get("/current", optionalAuth, async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, title, start_time, end_time, is_active, created_at
+      `SELECT id, title, description, start_time, end_time, is_active, created_at
        FROM elections
        WHERE is_active = true
        ORDER BY created_at DESC
@@ -202,6 +234,7 @@ router.get("/current", optionalAuth, async (req, res) => {
       election: {
         id: result.rows[0].id,
         title: result.rows[0].title,
+        description: result.rows[0].description,
         startTime: result.rows[0].start_time,
         endTime: result.rows[0].end_time,
         isActive: result.rows[0].is_active,
@@ -210,6 +243,47 @@ router.get("/current", optionalAuth, async (req, res) => {
   } catch (error) {
     console.error("Error fetching current election:", error);
     res.status(500).json({ error: "Failed to fetch current election" });
+  }
+});
+
+// Get latest election (including Setup Phase) - for mobile devices
+router.get("/latest", optionalAuth, async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, title, description, start_time, end_time, is_active, created_at
+       FROM elections
+       ORDER BY created_at DESC
+       LIMIT 1`
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({ election: null });
+    }
+
+    const election = result.rows[0];
+
+    // Determine status based on is_active and dates
+    let status = "Setup Phase";
+    if (election.is_active) {
+      const now = new Date();
+      const endTime = new Date(election.end_time);
+      status = now > endTime ? "Ended" : "Active";
+    }
+
+    res.json({
+      election: {
+        id: election.id,
+        title: election.title,
+        description: election.description,
+        startTime: election.start_time,
+        endTime: election.end_time,
+        isActive: election.is_active,
+        status: status,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching latest election:", error);
+    res.status(500).json({ error: "Failed to fetch latest election" });
   }
 });
 

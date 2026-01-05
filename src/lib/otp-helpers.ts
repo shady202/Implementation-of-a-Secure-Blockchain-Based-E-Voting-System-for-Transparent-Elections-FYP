@@ -1,4 +1,5 @@
 import { toast } from "sonner";
+import { API_BASE_URL } from "./api-config";
 
 // Types for OTP helper parameters
 interface OtpState {
@@ -23,7 +24,7 @@ interface VerifyOtpParams {
 // Helper to request OTP via email
 export const handleRequestOtp = async (email: string, state: OtpState) => {
   try {
-    const response = await fetch("http://localhost:3001/api/auth/request-otp", {
+    const response = await fetch(`${API_BASE_URL}/auth/request-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
@@ -70,7 +71,7 @@ export const handleVerifyOtp = async (
 
   state.setLoading(true);
   try {
-    const response = await fetch("http://localhost:3001/api/auth/verify-otp", {
+    const response = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: otpEmail, otp: otpCode }),

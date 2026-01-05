@@ -3,6 +3,12 @@ import { query } from "../db";
 import { hashPassword, verifyPassword } from "../utils/crypto";
 import { generateOtp, hashOtp, verifyOtp } from "../utils/otp";
 import { sendOtpEmail } from "../utils/mail";
+import {
+  generateToken,
+  verifyToken,
+  extractTokenFromHeader,
+} from "../utils/jwt";
+import { requireAuth, AuthRequest } from "../middleware/auth";
 
 const router = Router();
 
@@ -18,7 +24,7 @@ const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS || 5);
  */
 router.post("/register", async (req, res) => {
   try {
-    const { email, password, fullName, studentId, department } = req.body;
+    const { email, password, fullName, studentId, department, year } = req.body;
 
     if (!email || !password || !studentId) {
       return res.status(400).json({
@@ -43,24 +49,19 @@ router.post("/register", async (req, res) => {
     // Hash the password before storing
     const hashedPassword = await hashPassword(password);
 
-    // Generate a unique placeholder wallet address for this user
-    // Use crypto to create a valid hex string from studentId
-    const crypto = require("crypto");
-    const hash = crypto.createHash("sha256").update(studentId).digest("hex");
-    const walletPlaceholder = `0x${hash.substring(0, 40)}`;
-
-    const studentDepartment = department || "Pending"; // Use provided department or default to 'Pending'
+    const studentDepartment = department || "Pending";
+    const studentYear = year ? Number(year) : 1; // Use provided year or default to 1
 
     const result = await query(
       `INSERT INTO voters (student_id, email, password_hash, wallet_address, department, year_of_study, full_name, has_voted, email_verified, registration_date, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 1, $6, false, false, NOW(), NOW(), NOW())
+       VALUES ($1, $2, $3, NULL, $4, $5, $6, false, false, NOW(), NOW(), NOW())
        RETURNING id, student_id, email`,
       [
         studentId,
         email,
         hashedPassword,
-        walletPlaceholder,
         studentDepartment,
+        studentYear,
         fullName || "",
       ]
     );
@@ -199,14 +200,6 @@ router.post("/verify-otp", async (req, res) => {
 
     const voter = voterResult.rows[0];
 
-    // ✅ FIX: If already verified, just return success (skip OTP check)
-    if (voter.email_verified) {
-      return res.json({
-        success: true,
-        message: "Email already verified",
-      });
-    }
-
     // Check if OTP exists
     if (!voter.email_otp_hash || !voter.email_otp_expires_at) {
       return res.status(400).json({
@@ -251,25 +244,135 @@ router.post("/verify-otp", async (req, res) => {
     }
 
     // Mark as verified and clear OTP data
-    await query(
+    const updateResult = await query(
       `UPDATE voters 
        SET email_verified = true,
            email_otp_hash = NULL,
            email_otp_expires_at = NULL,
            otp_attempts = 0
-       WHERE LOWER(email) = LOWER($1)`,
+       WHERE LOWER(email) = LOWER($1)
+       RETURNING id, email, student_id, full_name, department, year_of_study`,
       [email]
     );
 
-    res.json({
+    const updatedVoter = updateResult.rows[0];
+    console.log("✅ OTP Verified for user:", updatedVoter.email);
+
+    // Check if user is admin
+    const adminCheck = await query(
+      "SELECT id FROM admins WHERE user_id = $1 AND is_active = true",
+      [updatedVoter.id]
+    );
+    const isAdmin = adminCheck.rows.length > 0;
+    console.log("🔐 User is admin:", isAdmin);
+
+    // Split full_name into firstName and lastName for frontend compatibility
+    const fullName = updatedVoter.full_name || "";
+    const nameParts = fullName.trim().split(" ");
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || "";
+
+    // Generate JWT token
+    const token = generateToken({
+      userId: updatedVoter.id,
+      email: updatedVoter.email,
+      studentId: updatedVoter.student_id,
+      isAdmin,
+    });
+    console.log("🎫 JWT Token generated successfully");
+    console.log("📦 Token length:", token.length);
+
+    const responseData = {
       success: true,
       message: "Email verified successfully",
-    });
+      token,
+      user: {
+        id: updatedVoter.id,
+        email: updatedVoter.email,
+        studentId: updatedVoter.student_id,
+        fullName: updatedVoter.full_name,
+        firstName,
+        lastName,
+        department: updatedVoter.department,
+        year: updatedVoter.year_of_study,
+        yearOfStudy: updatedVoter.year_of_study,
+        role: "student",
+        isAdmin,
+      },
+    };
+
+    console.log("📤 Sending response with token to frontend");
+    res.json(responseData);
   } catch (error) {
-    console.error("Verify OTP error:", error);
+    console.error("❌ Verify OTP error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to verify code",
+    });
+  }
+});
+
+/**
+ * GET /api/auth/verify
+ * Verify JWT token and return user info
+ */
+router.get("/verify", requireAuth, async (req: AuthRequest, res) => {
+  try {
+    // Token is already verified by requireAuth middleware
+    // User info is attached to req.user
+
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "User not authenticated",
+      });
+    }
+
+    // Fetch fresh user data from database
+    const userResult = await query(
+      `SELECT id, email, student_id, full_name, department, year_of_study, 
+              wallet_address, email_verified, has_voted
+       FROM voters 
+       WHERE id = $1`,
+      [req.user.id]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    const user = userResult.rows[0];
+
+    // Check if user is admin
+    const adminCheck = await query(
+      "SELECT id, role FROM admins WHERE user_id = $1 AND is_active = true",
+      [user.id]
+    );
+    const isAdmin = adminCheck.rows.length > 0;
+
+    res.json({
+      success: true,
+      user: {
+        id: user.id,
+        email: user.email,
+        studentId: user.student_id,
+        fullName: user.full_name,
+        department: user.department,
+        yearOfStudy: user.year_of_study,
+        walletAddress: user.wallet_address,
+        emailVerified: user.email_verified,
+        hasVoted: user.has_voted,
+        isAdmin,
+      },
+    });
+  } catch (error) {
+    console.error("Token verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to verify token",
     });
   }
 });

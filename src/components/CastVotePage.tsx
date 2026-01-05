@@ -34,6 +34,9 @@ import {
 } from "../lib/blockchain";
 
 const apuLogo = "/apu-logo.png";
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:3001/api"
+).replace(/\/api$/, "");
 
 type Category = {
   id: number;
@@ -83,7 +86,7 @@ export function CastVotePage({ onNavigate }: CastVotePageProps) {
           const walletAddress = accounts[0];
 
           const checkResponse = await fetch(
-            "http://localhost:3001/api/voters/check-registration",
+            `${API_URL}/api/voters/check-registration`,
             {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -185,7 +188,7 @@ export function CastVotePage({ onNavigate }: CastVotePageProps) {
 
       // Mark voter as voted in database
       try {
-        await fetch("http://localhost:3001/api/voters/mark-voted", {
+        await fetch(`${API_URL}/api/voters/mark-voted`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ walletAddress }),

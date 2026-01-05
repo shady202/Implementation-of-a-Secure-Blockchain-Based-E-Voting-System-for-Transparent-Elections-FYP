@@ -19,7 +19,7 @@ function getEnvVar(key: string, defaultValue: string = ""): string {
 // Export environment variables as constants
 export const ENV = {
   // Blockchain Configuration
-  CONTRACT_ADDRESS: "0x50a7daAbE0ca9ec92B5f6687dBb28e060e3E317f",
+  CONTRACT_ADDRESS: "0x2DCa51f1095B2BbF7a5A1A8f6c0E7c7B8AD0e613",
 
   CHAIN_ID:
     typeof process !== "undefined"
@@ -43,8 +43,8 @@ export const ENV = {
   // Session Configuration
   SESSION_KEY:
     typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_SESSION_KEY || "apu-vote-session-key-2025"
-      : "apu-vote-session-key-2025",
+      ? process.env.NEXT_PUBLIC_SESSION_KEY || ""
+      : "",
 } as const;
 
 // Type-safe environment variable getter
