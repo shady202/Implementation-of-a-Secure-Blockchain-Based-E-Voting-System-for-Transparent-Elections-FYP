@@ -19,6 +19,92 @@ const OTP_RESEND_COOLDOWN = Number(
 const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS || 5);
 
 /**
+ * POST /api/auth/check-student-id
+ * Check if student ID already exists (for real-time validation)
+ */
+router.post("/check-student-id", async (req, res) => {
+  try {
+    const { studentId } = req.body;
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Student ID is required",
+      });
+    }
+
+    // Check if student ID exists
+    const existing = await query(
+      "SELECT id FROM voters WHERE student_id = $1 LIMIT 1",
+      [studentId]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.json({
+        success: false,
+        exists: true,
+        message: `This Student ID (${studentId}) is already registered.`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      exists: false,
+      message: "Student ID is available",
+    });
+  } catch (error) {
+    console.error("Check student ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check student ID",
+    });
+  }
+});
+
+/**
+ * POST /api/auth/check-email
+ * Check if email already exists (for real-time validation)
+ */
+router.post("/check-email", async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Check if email exists
+    const existing = await query(
+      "SELECT id FROM voters WHERE email = $1 LIMIT 1",
+      [email]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.json({
+        success: false,
+        exists: true,
+        message: `This email is already registered.`,
+      });
+    }
+
+    return res.json({
+      success: true,
+      exists: false,
+      message: "Email is available",
+    });
+  } catch (error) {
+    console.error("Check email error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to check email",
+    });
+  }
+});
+
+/**
  * POST /api/auth/register
  * Register new user with email/password
  */
@@ -33,16 +119,31 @@ router.post("/register", async (req, res) => {
       });
     }
 
-    // Check if user already exists
-    const existing = await query(
-      "SELECT id FROM voters WHERE student_id = $1 OR email = $2 LIMIT 1",
-      [studentId, email]
+    // Check if student ID already exists
+    const existingStudentId = await query(
+      "SELECT id, student_id FROM voters WHERE student_id = $1 LIMIT 1",
+      [studentId]
     );
 
-    if (existing.rows.length > 0) {
+    if (existingStudentId.rows.length > 0) {
       return res.status(400).json({
         success: false,
-        message: "User already registered",
+        message: `This Student ID (${studentId}) is already registered. Each TP number can only be used once.`,
+        field: "studentId",
+      });
+    }
+
+    // Check if email already exists
+    const existingEmail = await query(
+      "SELECT id, email FROM voters WHERE email = $1 LIMIT 1",
+      [email]
+    );
+
+    if (existingEmail.rows.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `This email (${email}) is already registered. Please use a different email or login to your existing account.`,
+        field: "email",
       });
     }
 

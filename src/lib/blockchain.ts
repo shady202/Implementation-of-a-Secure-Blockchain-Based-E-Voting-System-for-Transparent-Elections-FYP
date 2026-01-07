@@ -10,7 +10,9 @@ export const CONTRACT_ADDRESS = "0x2DCa51f1095B2BbF7a5A1A8f6c0E7c7B8AD0e613";
 
 const getProvider = () => {
   if (typeof window === "undefined" || !(window as any).ethereum) {
-    throw new Error("MetaMask is not available");
+    throw new Error(
+      "No Ethereum wallet detected. Please install and use MetaMask wallet."
+    );
   }
   return new ethers.BrowserProvider((window as any).ethereum);
 };
@@ -179,10 +181,10 @@ export const getAllCategories = async () => {
   }));
 };
 
-// ✅ aliases used by other pages
+// aliases used by other pages
 export const getElectionCategories = getAllCategories;
 
-// ✅ Compatibility with code that calls addCategoryOnChain(id,name,desc,positions)
+// Compatibility with code that calls addCategoryOnChain(id,name,desc,positions)
 export const addCategoryOnChain = async (
   _categoryId: string,
   name: string,
@@ -326,7 +328,7 @@ export const castVote = async (categoryId: number, candidateId: number) => {
   toast.success("Vote recorded");
 };
 
-// ✅ Some pages import vote()
+// Some pages import vote()
 export const vote = castVote;
 
 export const batchVote = async (
@@ -343,7 +345,7 @@ export const batchVote = async (
   };
 };
 
-/* ================= VOTE VERIFICATION ================= */
+/* ================= VOTE VERIFICATION ================= */ 
 
 export interface VoteReceipt {
   categoryId: number;
@@ -366,8 +368,7 @@ export const getMyVotes = async (): Promise<VoteReceipt[]> => {
   }));
 };
 
-/* ================= ELIGIBILITY (basic placeholder) ================= */
-// If you want “real verification”, use lib/api.ts below.
+
 export const verifyStudentEligibility = async (_formData: any) => {
   return { eligible: true, message: "OK" };
 };

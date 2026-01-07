@@ -112,7 +112,7 @@ interface AdminDashboardProps {
 export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState("settings");
 
   const [election, setElection] = useState<any>(null);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -677,7 +677,24 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
       const end = Math.floor(new Date(newElection.endDate).getTime() / 1000);
       await createElection(newElection.title, start, end);
 
-      toast.success("Election created successfully!");
+      toast.success("Election settings saved successfully!", {
+        duration: 4000,
+      });
+
+      // Show guidance message if no categories/candidates exist yet
+      if (categories.length === 0 || candidates.length === 0) {
+        setTimeout(() => {
+          toast.info(
+            "📋 Next steps: Add Categories and Candidates before starting the election",
+            {
+              duration: 6000,
+              description:
+                "Go to the Categories tab to add voting positions, then add candidates for each category.",
+            }
+          );
+        }, 500);
+      }
+
       await loadAll();
     } catch (err: any) {
       toast.error(parseBlockchainError(err));
@@ -1021,16 +1038,21 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
 
       console.log("✅ Election ended. Starting reset process...");
 
-      // Step 1: Reset blockchain
-      console.log("Step 1: Resetting blockchain...");
-      toast.info("Resetting blockchain...");
-      try {
-        await resetSystem();
-        console.log("✅ Blockchain reset successful!");
-        toast.success("✅ Blockchain reset complete!");
-      } catch (resetErr: any) {
-        console.error("❌ Blockchain reset failed:", resetErr);
-        throw resetErr; // Re-throw to be caught by outer catch
+      // Step 1: Reset blockchain (only if election exists)
+      if (currentState !== 0) {
+        console.log("Step 1: Resetting blockchain...");
+        toast.info("Resetting blockchain...");
+        try {
+          await resetSystem();
+          console.log("✅ Blockchain reset successful!");
+          toast.success("✅ Blockchain reset complete!");
+        } catch (resetErr: any) {
+          console.error("❌ Blockchain reset failed:", resetErr);
+          throw resetErr; // Re-throw to be caught by outer catch
+        }
+      } else {
+        console.log("Step 1: No election on blockchain to reset, skipping...");
+        toast.info("No blockchain election to reset");
       }
 
       // Step 2: Reset database
@@ -1615,11 +1637,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
               className="w-full"
             >
               <TabsList className="grid grid-cols-5 mb-8 h-14 w-full p-2">
-                <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-                <TabsTrigger value="voters">Voters</TabsTrigger>
-                <TabsTrigger value="candidates">Candidates</TabsTrigger>
-                <TabsTrigger value="categories">Categories</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
+                <TabsTrigger value="categories">Categories</TabsTrigger>
+                <TabsTrigger value="candidates">Candidates</TabsTrigger>
+                <TabsTrigger value="voters">Voters</TabsTrigger>
+                <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
               </TabsList>
 
               <TabsContent value="dashboard" className="space-y-6">
@@ -2198,7 +2220,11 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                         <Button
                           type="submit"
                           size="lg"
-                          disabled={!walletVerified || submitting}
+                          disabled={
+                            !walletVerified ||
+                            submitting ||
+                            adminData.electionStatus !== "Not Started" // Disable if election already created
+                          }
                           className="bg-blue-600 hover:bg-blue-700 flex-1 min-w-[160px]"
                         >
                           {submitting ? (
@@ -2210,6 +2236,13 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             "Save Settings"
                           )}
                         </Button>
+                        {adminData.electionStatus !== "Not Started" && (
+                          <p className="w-full text-xs text-amber-600">
+                            ⚠️ Settings are locked after initial save. you may
+                            start the election or reset the system to create a
+                            new election.
+                          </p>
+                        )}
                         <Button
                           type="button"
                           size="lg"
@@ -2219,7 +2252,10 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                           disabled={
                             !walletVerified ||
                             submitting ||
-                            adminData.electionStatus === "Active"
+                            adminData.electionStatus === "Active" ||
+                            !election?.title || // Election not created/saved
+                            categories.length === 0 || // No categories
+                            candidates.length < 2 // Less than 2 candidates
                           }
                         >
                           {submitting ? (
@@ -2231,6 +2267,27 @@ export function AdminDashboard({ onNavigate }: AdminDashboardProps) {
                             "Start Election"
                           )}
                         </Button>
+                        {/* Warning messages for Start Election button */}
+                        {!election?.title && (
+                          <p className="w-full text-xs text-amber-600">
+                            ⚠️ Please save election settings first (title and
+                            dates are required)
+                          </p>
+                        )}
+                        {election?.title && categories.length === 0 && (
+                          <p className="w-full text-xs text-amber-600">
+                            ⚠️ Please add at least one category before starting
+                            the election
+                          </p>
+                        )}
+                        {election?.title &&
+                          categories.length > 0 &&
+                          candidates.length < 2 && (
+                            <p className="w-full text-xs text-amber-600">
+                              ⚠️ Please add at least two candidates per category
+                              before starting the election
+                            </p>
+                          )}
                         <Button
                           type="button"
                           size="lg"

@@ -141,13 +141,20 @@ export function ResultsPage({ onNavigate }: ResultsPageProps) {
         if (dbElectionData.election?.description) {
           setElectionDescription(dbElectionData.election.description);
         }
+
+        // ✅ Fetch showResultsDuringVoting setting from database
+        const showResultsSetting =
+          dbElectionData.election?.showResultsDuringVoting ?? true;
+        setShowResults(showResultsSetting);
+        console.log("📊 Show results during voting:", showResultsSetting);
       } catch (err) {
         console.error("Failed to fetch election description:", err);
+        // Default to hiding results if we can't fetch the setting
+        setShowResults(false);
       }
 
       // Check if election is currently active
       setElectionActive(electionData.isActive);
-      setShowResults(true); // Always show results for testing
 
       setLastUpdated(new Date());
     } catch (error) {

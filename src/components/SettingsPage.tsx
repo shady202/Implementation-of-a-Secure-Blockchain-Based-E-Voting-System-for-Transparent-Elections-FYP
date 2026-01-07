@@ -207,27 +207,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
     }
   };
 
-  const handleConnectWallet = async () => {
-    try {
-      if (typeof window.ethereum === "undefined") {
-        toast.error("MetaMask is not installed");
-        return;
-      }
-
-      const accounts = await window.ethereum.request({
-        method: "eth_requestAccounts",
-      });
-
-      if (accounts.length > 0) {
-        setWalletAddress(accounts[0]);
-        setStats((prev) => ({ ...prev, walletConnected: true }));
-        toast.success("Wallet connected successfully!");
-      }
-    } catch (error: any) {
-      console.error("Error connecting wallet:", error);
-      toast.error("Failed to connect wallet");
-    }
-  };
+  // Wallet connection is handled via Voter Registration page only
+  // Settings page only displays the registered wallet (read-only)
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -347,74 +328,6 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
             </p>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid gap-6 md:grid-cols-4 mb-8">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Total Elections
-                </CardTitle>
-                <Vote className="h-4 w-4 text-slate-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-slate-900">
-                  {stats.totalElections}
-                </div>
-                <p className="text-xs text-slate-600 mt-1">Available to vote</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Participated
-                </CardTitle>
-                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-slate-900">
-                  {stats.participated}
-                </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  Votes cast successfully
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Upcoming</CardTitle>
-                <Clock className="h-4 w-4 text-blue-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-slate-900">
-                  {stats.upcoming}
-                </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  Elections coming soon
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">
-                  Wallet Status
-                </CardTitle>
-                <Wallet className="h-4 w-4 text-purple-600" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-slate-900">
-                  {stats.walletConnected ? (
-                    <CheckCircle2 className="h-6 w-6 text-emerald-600" />
-                  ) : (
-                    <span>-</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-600 mt-1">
-                  {stats.walletConnected ? "Connected" : "Not connected"}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
           {/* Settings Tabs */}
           <Tabs defaultValue="profile" className="w-full">
             <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 mb-8 h-auto">
@@ -530,7 +443,7 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="department">Faculty *</Label>
+                        <Label htmlFor="department">Faculty</Label>
                         <Input
                           id="department"
                           value={profileData.department}
@@ -648,13 +561,26 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                           </AlertDescription>
                         </Alert>
                       ) : (
-                        <Button
-                          onClick={handleConnectWallet}
-                          className="bg-gray-600 hover:bg-gray-700"
-                        >
-                          <Wallet className="mr-2 h-4 w-4" />
-                          Connect MetaMask
-                        </Button>
+                        <Alert className="bg-amber-50 border-amber-200">
+                          <AlertCircle className="h-4 w-4 text-amber-600" />
+                          <AlertDescription>
+                            <p className="font-semibold text-amber-900">
+                              No Wallet Registered
+                            </p>
+                            <p className="text-sm mt-2 text-amber-800">
+                              You have not registered a wallet yet. Please go to
+                              the Voter Registration page to register your
+                              MetaMask wallet.
+                            </p>
+                            <Button
+                              onClick={() => onNavigate("voter-registration")}
+                              className="mt-3 bg-amber-600 hover:bg-amber-700"
+                              size="sm"
+                            >
+                              Go to Voter Registration
+                            </Button>
+                          </AlertDescription>
+                        </Alert>
                       )}
                     </div>
 
@@ -706,8 +632,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                   <CardContent className="space-y-6">
                     <div className="space-y-2">
                       <Label htmlFor="language">Language</Label>
-                      <Select defaultValue="english">
-                        <SelectTrigger id="language">
+                      <Select defaultValue="english" disabled>
+                        <SelectTrigger id="language" disabled>
                           <SelectValue placeholder="Select language" />
                         </SelectTrigger>
                         <SelectContent>
@@ -725,8 +651,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
 
                     <div className="space-y-2">
                       <Label htmlFor="timezone">Timezone</Label>
-                      <Select defaultValue="malaysia">
-                        <SelectTrigger id="timezone">
+                      <Select defaultValue="malaysia" disabled>
+                        <SelectTrigger id="timezone" disabled>
                           <SelectValue placeholder="Select timezone" />
                         </SelectTrigger>
                         <SelectContent>
@@ -757,8 +683,8 @@ export function SettingsPage({ onNavigate }: SettingsPageProps) {
                         </p>
                         <p className="text-xs text-blue-800">
                           Only you can see your voting history. Election results
-                          show aggregate vote counts without revealing individual
-                          votes.
+                          show aggregate vote counts without revealing
+                          individual votes.
                         </p>
                       </div>
                     </div>

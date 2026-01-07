@@ -547,10 +547,10 @@ export function VoterRegistrationPage({
                   alt="Asia Pacific University Logo"
                   className="h-10 w-auto"
                 />
-                <CardTitle>Voter Registration</CardTitle>
+                <CardTitle>Voter Wallet Registration</CardTitle>
               </div>
               <CardDescription>
-                Register to participate in APU VOTE elections
+                Register your wallet to participate in APU VOTE elections
               </CardDescription>
             </CardHeader>
 
@@ -672,17 +672,6 @@ export function VoterRegistrationPage({
                     >
                       Download here
                     </a>
-                  </p>
-
-                  <p className="text-sm text-center text-slate-600">
-                    Not sure if you're eligible?{" "}
-                    <button
-                      onClick={() => onNavigate("verify-eligibility")}
-                      className="text-emerald-600 hover:underline"
-                    >
-                      Verify your eligibility
-                    </button>{" "}
-                    first.
                   </p>
                 </div>
               ) : (

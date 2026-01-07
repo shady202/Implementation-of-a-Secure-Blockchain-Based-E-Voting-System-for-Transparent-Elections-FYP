@@ -282,11 +282,12 @@ router.post("/login", async (req, res) => {
 
     // If capacity testing is enabled, check active sessions BEFORE allowing login
     if (capacityTestingEnabled) {
-      // Count ALL active sessions (logged in within last 24 hours)
-      // Do NOT exclude current user - they haven't logged in yet!
+      // Count ONLY active sessions (logged in within last 24 hours AND not logged out)
+      // last_login_at is set to NULL on logout, so we exclude those
       const activeSessionsResult = await query(
         `SELECT COUNT(*) as count FROM voters 
-         WHERE last_login_at > NOW() - INTERVAL '24 hours'`
+         WHERE last_login_at IS NOT NULL 
+         AND last_login_at > NOW() - INTERVAL '24 hours'`
       );
 
       const activeSessions = parseInt(
@@ -299,9 +300,6 @@ router.post("/login", async (req, res) => {
       );
 
       // Block if we're AT or ABOVE capacity
-      // This check happens BEFORE updating last_login_at, so:
-      // - If 2 users are logged in and max is 2, activeSessions = 2
-      // - 2 >= 2 is TRUE, so block the 3rd user ✅
       if (activeSessions >= maxConcurrentUsers) {
         console.log("❌ System at maximum capacity - blocking login");
         console.log(
@@ -600,11 +598,33 @@ router.post("/validate-wallet", async (req, res) => {
       console.log("❌ SECURITY ALERT: Wallet-TP mismatch");
       console.log("   Wallet belongs to:", voter.student_id);
       console.log("   Attempted TP:", studentId);
-      return res.json({
-        valid: false,
-        mismatch: true,
-        message: `This wallet address doesn't match your registered account. Please use the wallet you registered with.`,
-      });
+
+      // Check if the current user (studentId) has a registered wallet
+      const currentUserCheck = await query(
+        "SELECT student_id, wallet_address FROM voters WHERE student_id = $1 LIMIT 1",
+        [studentId]
+      );
+
+      // CASE 1: Current user HAS a registered wallet but is using someone else's wallet
+      if (
+        currentUserCheck.rows.length > 0 &&
+        currentUserCheck.rows[0].wallet_address
+      ) {
+        return res.json({
+          valid: false,
+          mismatch: true,
+          message: `This wallet address doesn't match your registered account. Please use the wallet you registered with.`,
+        });
+      }
+      // CASE 2: Current user DOES NOT have a registered wallet, but trying to use someone else's wallet
+      else {
+        return res.json({
+          valid: false,
+          mismatch: true,
+          walletBelongsToOther: true,
+          message: `This wallet address has been registered before with a different account. Please choose a new wallet.`,
+        });
+      }
     }
 
     if (
@@ -721,6 +741,38 @@ router.post("/fix-user-data", async (req, res) => {
   } catch (error) {
     console.error("Error updating user data:", error);
     res.status(500).json({ error: "Failed to update user data" });
+  }
+});
+
+// GET endpoint to fetch registered wallet for Settings page
+router.get("/registered-wallet/:studentId", async (req, res) => {
+  try {
+    const { studentId } = req.params;
+
+    console.log("🔍 Fetching registered wallet for:", studentId);
+
+    const result = await query(
+      "SELECT wallet_address FROM voters WHERE student_id = $1 LIMIT 1",
+      [studentId]
+    );
+
+    if (result.rows.length === 0) {
+      console.log("❌ No voter found for student ID:", studentId);
+      return res.json({ success: false, walletAddress: null });
+    }
+
+    const walletAddress = result.rows[0].wallet_address;
+
+    if (!walletAddress || walletAddress === null) {
+      console.log("ℹ️  Voter exists but no wallet registered");
+      return res.json({ success: false, walletAddress: null });
+    }
+
+    console.log("✅ Found registered wallet:", walletAddress);
+    res.json({ success: true, walletAddress });
+  } catch (error) {
+    console.error("Error fetching registered wallet:", error);
+    res.status(500).json({ success: false, error: "Failed to fetch wallet" });
   }
 });
 

@@ -568,12 +568,86 @@ export function VotePage({ onNavigate }: VotePageProps) {
 
       console.log("🗳️ Submitting votes to blockchain:", votes);
 
+      // CRITICAL SECURITY CHECK: Verify current wallet matches registered wallet
+      const provider = new ethers.BrowserProvider((window as any).ethereum);
+      const signer = await provider.getSigner();
+      const currentWalletAddress = await signer.getAddress();
+
+      // Get registered wallet address from database
+      const registrationCheck = await fetch(
+        `${API_URL}/api/voters/check-registration`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ studentId: currentUser?.studentId }),
+        }
+      );
+      const registrationData = await registrationCheck.json();
+      const registeredWalletAddress = registrationData.walletAddress;
+
+      console.log("🔒 Security Check - Wallet Verification:");
+      console.log("  Current wallet:", currentWalletAddress);
+      console.log("  Registered wallet:", registeredWalletAddress);
+
+      // Check if wallet addresses match (case-insensitive)
+      if (
+        currentWalletAddress.toLowerCase() !==
+        registeredWalletAddress?.toLowerCase()
+      ) {
+        setSubmitting(false);
+
+        // CASE 1: User has a registered wallet but switched to a different one
+        if (registeredWalletAddress) {
+          toast.error("Wallet Mismatch Detected", {
+            description:
+              "This wallet address doesn't match your registered account. Please use the wallet you registered with.",
+            duration: 6000,
+          });
+          console.error("❌ SECURITY ALERT: User switched wallets!");
+          console.error("  Registered:", registeredWalletAddress);
+          console.error("  Current:", currentWalletAddress);
+        }
+        // CASE 2: User hasn't registered a wallet, but current wallet belongs to someone else
+        else {
+          // Check if current wallet is registered to another user
+          const walletOwnerCheck = await fetch(
+            `${API_URL}/api/voters/check-registration`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ walletAddress: currentWalletAddress }),
+            }
+          );
+          const walletOwnerData = await walletOwnerCheck.json();
+
+          if (walletOwnerData.registered) {
+            toast.error("Wallet Already Registered", {
+              description:
+                "This wallet address has been registered before with a different account. Please choose a new wallet.",
+              duration: 6000,
+            });
+            console.error("❌ SECURITY ALERT: Wallet belongs to another user!");
+            console.error("  Wallet:", currentWalletAddress);
+          } else {
+            toast.error("Wallet Not Registered", {
+              description:
+                "Please register your wallet before voting. Go to Voter Registration page.",
+              duration: 6000,
+            });
+            console.error("❌ User has not registered a wallet");
+          }
+        }
+
+        return; // Block vote submission
+      }
+
+      console.log("✅ Wallet verification passed - proceeding with vote");
+
       const result = await batchVote(votes);
 
       // Step 2: Save votes to database for LIFETIME history
-      const provider = new ethers.BrowserProvider((window as any).ethereum);
-      const signer = await provider.getSigner();
-      const walletAddress = await signer.getAddress();
+      // Use the verified wallet address
+      const walletAddress = currentWalletAddress;
 
       try {
         // Get active election from database

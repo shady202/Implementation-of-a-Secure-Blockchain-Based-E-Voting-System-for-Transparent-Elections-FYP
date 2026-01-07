@@ -13,6 +13,7 @@ import {
 import { ArrowLeft, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { registerUser } from "../lib/auth";
+import { getApiBaseUrlWithoutSuffix } from "../lib/api-config";
 import {
   Card,
   CardHeader,
@@ -183,8 +184,22 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       return;
     }
 
+    // Check if faculty is selected
+    if (!formData.faculty) {
+      toast.error("Please select a faculty");
+      setLoading(false);
+      return;
+    }
+
+    // Check if year is selected
+    if (!formData.year) {
+      toast.error("Please select year of study");
+      setLoading(false);
+      return;
+    }
+
     if (!formData.agreeToTerms) {
-      toast.error("You must agree to the terms and privacy policy");
+      toast.error("You must agree to the terms");
       setLoading(false);
       return;
     }
@@ -193,7 +208,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
       // Simulate API call
       await new Promise((resolve) => setTimeout(resolve, 1500));
 
-      const success = await registerUser({
+      const result = await registerUser({
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
@@ -203,7 +218,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
         year: formData.year,
       });
 
-      if (success) {
+      if (result.success) {
         // Save registration data to localStorage for wallet registration
         localStorage.setItem(
           "pendingRegistration",
@@ -220,7 +235,27 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
         toast.success("Registration successful! Please login.");
         onNavigate("login");
       } else {
-        toast.error("Registration failed. User may already exist.");
+        // Display the specific error message from backend
+        toast.error(result.message || "Registration failed");
+
+        // If the error message contains "Student ID", highlight the studentId field
+        if (
+          result.message?.includes("Student ID") ||
+          result.message?.includes("TP")
+        ) {
+          setErrors((prev) => ({
+            ...prev,
+            studentId:
+              result.message || "This Student ID is already registered",
+          }));
+        }
+        // If the error message contains "email", highlight the email field
+        else if (result.message?.toLowerCase().includes("email")) {
+          setErrors((prev) => ({
+            ...prev,
+            email: result.message || "This email is already registered",
+          }));
+        }
       }
     } catch (error) {
       toast.error("An error occurred during registration");
@@ -240,7 +275,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
     }
   };
 
-  const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+  const handleBlur = async (e: React.FocusEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     let validation;
 
@@ -251,9 +286,63 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
         break;
       case "email":
         validation = validateEmail(value);
+
+        // If format is valid, check if Email already exists in database
+        if (validation.valid && value.trim()) {
+          try {
+            const API_URL = getApiBaseUrlWithoutSuffix();
+            const response = await fetch(`${API_URL}/api/auth/check-email`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: value }),
+            });
+
+            const data = await response.json();
+
+            if (data.exists) {
+              setErrors((prev) => ({
+                ...prev,
+                email: data.message || "This email is already registered",
+              }));
+              return;
+            }
+          } catch (error) {
+            console.error("Error checking email:", error);
+            // Don't show error to user, just log it
+          }
+        }
         break;
       case "studentId":
         validation = validateStudentId(value);
+
+        // If format is valid, check if Student ID already exists in database
+        if (validation.valid && value.trim()) {
+          try {
+            const API_URL = getApiBaseUrlWithoutSuffix();
+            const response = await fetch(
+              `${API_URL}/api/auth/check-student-id`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ studentId: value }),
+              }
+            );
+
+            const data = await response.json();
+
+            if (data.exists) {
+              setErrors((prev) => ({
+                ...prev,
+                studentId:
+                  data.message || "This Student ID is already registered",
+              }));
+              return;
+            }
+          } catch (error) {
+            console.error("Error checking student ID:", error);
+            // Don't show error to user, just log it
+          }
+        }
         break;
       case "password":
         validation = validatePassword(value);
@@ -475,6 +564,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   Faculty
                 </Label>
                 <Select
+                  required
                   value={formData.faculty}
                   onValueChange={(value) =>
                     setFormData((prev) => ({ ...prev, faculty: value }))
@@ -504,6 +594,7 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                   Year of Study
                 </Label>
                 <Select
+                  required
                   value={formData.year}
                   onValueChange={(value) =>
                     setFormData((prev) => ({ ...prev, year: value }))
@@ -618,8 +709,15 @@ export function RegisterPage({ onNavigate }: RegisterPageProps) {
                     Agree to terms and conditions
                   </label>
                   <p className="text-sm text-slate-500">
-                    By registering, you agree to our Terms of Service and
-                    Privacy Policy.
+                    By registering, you agree to our{" "}
+                    <button
+                      type="button"
+                      onClick={() => onNavigate("terms")}
+                      className="text-emerald-600 hover:underline"
+                    >
+                      Terms
+                    </button>
+                    .
                   </p>
                 </div>
               </div>
