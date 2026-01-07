@@ -104,38 +104,61 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
         return;
       }
 
-      // Fetch vote history from DATABASE (lifetime, all elections)
-      const response = await fetch(
-        `${API_URL}/api/votes/history/${walletAddress}`
+      // ✅ FETCH VOTE RECEIPTS FROM BLOCKCHAIN EVENTS
+      // This truly fetches from blockchain, not database
+      const { getVoteReceiptsFromBlockchain, getElectionState } = await import(
+        "../lib/blockchain"
       );
-      const data = await response.json();
 
-      if (data.success && data.elections && data.elections.length > 0) {
+      console.log("📜 Fetching vote receipts from blockchain events...");
+
+      // Get current election info to filter votes
+      let electionTitle = "My Votes";
+      let electionDescription = "";
+      let electionStartTime: number | undefined;
+      let electionEndTime: number | undefined;
+
+      try {
+        const electionInfo = await getElectionState();
+        electionTitle = electionInfo.title || "My Votes";
+        electionStartTime = electionInfo.startTime;
+        electionEndTime = electionInfo.endTime;
+
         console.log(
-          `✅ Found ${data.totalVotes} vote(s) across ${data.elections.length} election(s)`
+          `📅 Current election: "${electionTitle}" (${new Date(
+            electionStartTime * 1000
+          ).toLocaleString()} - ${new Date(
+            electionEndTime * 1000
+          ).toLocaleString()})`
+        );
+      } catch (err) {
+        console.log("⚠️  No active election found, showing all votes");
+      }
+
+      // Fetch blockchain receipts filtered by current election time
+      const blockchainReceipts = await getVoteReceiptsFromBlockchain(
+        walletAddress,
+        electionStartTime,
+        electionEndTime
+      );
+
+      if (blockchainReceipts.length > 0) {
+        console.log(
+          `✅ Found ${blockchainReceipts.length} vote(s) from current election`
         );
 
-        // Convert database format to component format
-        const allReceipts: ExtendedVoteReceipt[] = [];
-
-        for (const election of data.elections) {
-          for (const vote of election.votes) {
-            allReceipts.push({
-              categoryId: 0, // Not needed for display
-              categoryName: vote.categoryName,
-              candidateId: 0, // Not needed for display
-              candidateName: vote.candidateName,
-              timestamp: new Date(vote.timestamp),
-              transactionHash: vote.transactionHash,
-              electionTitle: election.electionTitle, // Use electionTitle from API
-              electionDescription: election.electionDescription, // Use electionDescription from API
-            });
-          }
-        }
+        // Convert blockchain format to component format
+        const allReceipts: ExtendedVoteReceipt[] = blockchainReceipts.map(
+          (receipt) => ({
+            ...receipt,
+            electionTitle,
+            electionDescription,
+          })
+        );
 
         setReceipts(allReceipts);
       } else {
-        console.log("ℹ️  No vote history found");
+        console.log("ℹ️  No vote receipts found for current election");
         setReceipts([]);
       }
     } catch (err: any) {
@@ -376,109 +399,127 @@ export function MyVotesPage({ onNavigate }: MyVotesPageProps) {
               </Card>
             ) : (
               <div className="grid gap-4">
-                {/* Group receipts by transaction hash */}
+                {/* Group receipts by election, timestamp, and transaction hash */}
                 {(() => {
-                  const groupedByTx: Record<string, ExtendedVoteReceipt[]> = {};
+                  // Create a composite key: election + timestamp (rounded to minute) + txHash
+                  const groupedVotes: Record<string, ExtendedVoteReceipt[]> =
+                    {};
+
                   receipts.forEach((receipt) => {
+                    const electionKey = receipt.electionTitle || "My Votes";
+                    // Round timestamp to the nearest minute to group votes from same session
+                    const timestampKey = new Date(receipt.timestamp)
+                      .toISOString()
+                      .slice(0, 16);
                     const txHash = receipt.transactionHash || "unknown";
-                    if (!groupedByTx[txHash]) {
-                      groupedByTx[txHash] = [];
+
+                    // Composite key: election + timestamp + txHash
+                    const groupKey = `${electionKey}|${timestampKey}|${txHash}`;
+
+                    if (!groupedVotes[groupKey]) {
+                      groupedVotes[groupKey] = [];
                     }
-                    groupedByTx[txHash].push(receipt);
+                    groupedVotes[groupKey].push(receipt);
                   });
 
-                  return Object.entries(groupedByTx).map(
-                    ([txHash, txReceipts], idx) => (
-                      <Card
-                        key={idx}
-                        className="border-2 shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
-                      >
-                        <div className="bg-emerald-500/10 px-4 py-2 border-b border-emerald-500/20 flex justify-between items-center">
-                          <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
-                            Confirmed Transaction
-                          </span>
-                          <span className="text-xs text-emerald-600 font-medium">
-                            {txReceipts.length} vote(s)
-                          </span>
-                        </div>
-                        <CardHeader className="pb-2">
-                          <CardTitle className="text-lg flex items-center gap-2 text-slate-900">
-                            {txReceipts[0].electionTitle || "My Votes"}
-                          </CardTitle>
-                          {txReceipts[0].electionDescription && (
-                            <p className="text-sm text-slate-600 mt-2">
-                              {txReceipts[0].electionDescription}
-                            </p>
-                          )}
-                        </CardHeader>
-                        <CardContent>
-                          {/* List all votes in this transaction */}
-                          <div className="space-y-4">
-                            {txReceipts.map((receipt, voteIdx) => (
-                              <div
-                                key={voteIdx}
-                                className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0"
-                              >
-                                <div className="bg-slate-100 p-2 rounded-lg mt-0.5">
-                                  <User className="h-4 w-4 text-slate-600" />
+                  return Object.entries(groupedVotes).map(
+                    ([groupKey, voteReceipts], idx) => {
+                      // Extract election title from group key
+                      const electionTitle = groupKey.split("|")[0];
+                      const txHash = groupKey.split("|")[2];
+
+                      return (
+                        <Card
+                          key={idx}
+                          className="border-2 shadow-lg overflow-hidden hover:shadow-xl transition-shadow"
+                        >
+                          <div className="bg-emerald-500/10 px-4 py-2 border-b border-emerald-500/20 flex justify-between items-center">
+                            <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">
+                              Confirmed Transaction
+                            </span>
+                            <span className="text-xs text-emerald-600 font-medium">
+                              {voteReceipts.length} vote(s)
+                            </span>
+                          </div>
+                          <CardHeader className="pb-2">
+                            <CardTitle className="text-lg flex items-center gap-2 text-slate-900">
+                              {electionTitle}
+                            </CardTitle>
+                            {voteReceipts[0].electionDescription && (
+                              <p className="text-sm text-slate-600 mt-2">
+                                {voteReceipts[0].electionDescription}
+                              </p>
+                            )}
+                          </CardHeader>
+                          <CardContent>
+                            {/* List all votes in this group */}
+                            <div className="space-y-4">
+                              {voteReceipts.map((receipt, voteIdx) => (
+                                <div
+                                  key={voteIdx}
+                                  className="flex items-start gap-3 pb-3 border-b last:border-0 last:pb-0"
+                                >
+                                  <div className="bg-slate-100 p-2 rounded-lg mt-0.5">
+                                    <User className="h-4 w-4 text-slate-600" />
+                                  </div>
+                                  <div className="flex-1">
+                                    <p className="text-xs text-slate-500 uppercase font-bold tracking-tight">
+                                      {receipt.categoryName}
+                                    </p>
+                                    <p className="font-semibold text-slate-900">
+                                      {receipt.candidateName}
+                                    </p>
+                                  </div>
                                 </div>
-                                <div className="flex-1">
-                                  <p className="text-xs text-slate-500 uppercase font-bold tracking-tight">
-                                    {receipt.categoryName}
-                                  </p>
-                                  <p className="font-semibold text-slate-900">
-                                    {receipt.candidateName}
-                                  </p>
-                                </div>
+                              ))}
+                            </div>
+
+                            {/* Time cast */}
+                            <div className="flex items-start gap-3 mt-4 pt-4 border-t border-slate-200">
+                              <div className="bg-slate-100 p-2 rounded-lg mt-0.5">
+                                <Calendar className="h-4 w-4 text-slate-600" />
                               </div>
-                            ))}
-                          </div>
-
-                          {/* Time cast */}
-                          <div className="flex items-start gap-3 mt-4 pt-4 border-t border-slate-200">
-                            <div className="bg-slate-100 p-2 rounded-lg mt-0.5">
-                              <Calendar className="h-4 w-4 text-slate-600" />
-                            </div>
-                            <div>
-                              <p className="text-xs text-slate-500 uppercase font-bold tracking-tight">
-                                Time Cast
-                              </p>
-                              <p className="font-semibold text-slate-900">
-                                {txReceipts[0].timestamp.toLocaleDateString()}
-                              </p>
-                              <p className="text-xs text-slate-600">
-                                {txReceipts[0].timestamp.toLocaleTimeString()}
-                              </p>
-                            </div>
-                          </div>
-
-                          {/* Transaction hash */}
-                          {txHash && txHash !== "unknown" && (
-                            <div className="mt-4 pt-4 border-t border-slate-200">
-                              <div className="bg-emerald-50 rounded-lg p-3">
-                                <p className="text-xs text-emerald-700 font-semibold mb-1">
-                                  Blockchain Transaction
+                              <div>
+                                <p className="text-xs text-slate-500 uppercase font-bold tracking-tight">
+                                  Time Cast
                                 </p>
-                                <div className="flex items-center gap-2">
-                                  <code className="text-[10px] text-slate-700 font-mono flex-1 truncate">
-                                    {txHash}
-                                  </code>
-                                  <a
-                                    href={`https://hoodi.etherscan.io/tx/${txHash}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-emerald-600 hover:text-emerald-700"
-                                    title="View on Blockchain Explorer"
-                                  >
-                                    <Receipt className="h-4 w-4" />
-                                  </a>
-                                </div>
+                                <p className="font-semibold text-slate-900">
+                                  {voteReceipts[0].timestamp.toLocaleDateString()}
+                                </p>
+                                <p className="text-xs text-slate-600">
+                                  {voteReceipts[0].timestamp.toLocaleTimeString()}
+                                </p>
                               </div>
                             </div>
-                          )}
-                        </CardContent>
-                      </Card>
-                    )
+
+                            {/* Transaction hash */}
+                            {txHash && txHash !== "unknown" && (
+                              <div className="mt-4 pt-4 border-t border-slate-200">
+                                <div className="bg-emerald-50 rounded-lg p-3">
+                                  <p className="text-xs text-emerald-700 font-semibold mb-1">
+                                    Blockchain Transaction
+                                  </p>
+                                  <div className="flex items-center gap-2">
+                                    <code className="text-[10px] text-slate-700 font-mono flex-1 truncate">
+                                      {txHash}
+                                    </code>
+                                    <a
+                                      href={`https://hoodi.etherscan.io/tx/${txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-emerald-600 hover:text-emerald-700"
+                                      title="View on Blockchain Explorer"
+                                    >
+                                      <Receipt className="h-4 w-4" />
+                                    </a>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    }
                   );
                 })()}
 

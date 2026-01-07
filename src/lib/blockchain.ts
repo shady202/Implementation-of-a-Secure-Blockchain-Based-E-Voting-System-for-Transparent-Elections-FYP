@@ -4,21 +4,77 @@ import { ethers } from "ethers";
 import VotingSystemABI from "./VotingSystemABI";
 import { toast } from "sonner";
 
-export const CONTRACT_ADDRESS = "0x2DCa51f1095B2BbF7a5A1A8f6c0E7c7B8AD0e613";
+export const CONTRACT_ADDRESS = "0xd16823004f9aBE77135Ca63b48Ec2678Bd204b73";
 
 /* ================= PROVIDER ================= */
 
-const getProvider = () => {
+const getProvider = async () => {
   if (typeof window === "undefined" || !(window as any).ethereum) {
     throw new Error(
       "No Ethereum wallet detected. Please install and use MetaMask wallet."
     );
   }
-  return new ethers.BrowserProvider((window as any).ethereum);
+
+  const ethereum = (window as any).ethereum;
+
+  // ✅ CRITICAL: Verify we're on Ethereum Hoodi network
+  try {
+    const currentChainId = await ethereum.request({ method: "eth_chainId" });
+    const HOODI_CHAIN_ID = "0x88BB0"; // 560048 decimal
+
+    if (currentChainId.toLowerCase() !== HOODI_CHAIN_ID.toLowerCase()) {
+      console.warn(
+        `⚠️ Wrong network detected: ${currentChainId}. Switching to Ethereum Hoodi...`
+      );
+
+      try {
+        // Try to switch to Hoodi
+        await ethereum.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId: HOODI_CHAIN_ID }],
+        });
+        console.log("✅ Switched to Ethereum Hoodi network");
+      } catch (switchError: any) {
+        // If Hoodi network not added, add it
+        if (switchError.code === 4902) {
+          console.log("📝 Adding Ethereum Hoodi network to MetaMask...");
+          await ethereum.request({
+            method: "wallet_addEthereumChain",
+            params: [
+              {
+                chainId: HOODI_CHAIN_ID,
+                chainName: "Ethereum Hoodi",
+                rpcUrls: ["https://rpc.hoodi.ethpandaops.io"],
+                nativeCurrency: {
+                  name: "Ether",
+                  symbol: "ETH",
+                  decimals: 18,
+                },
+                blockExplorerUrls: ["https://explorer.hoodi.ethpandaops.io"],
+              },
+            ],
+          });
+          console.log("✅ Ethereum Hoodi network added and switched");
+        } else {
+          throw switchError;
+        }
+      }
+    } else {
+      console.log("✅ Already on Ethereum Hoodi network");
+    }
+  } catch (error) {
+    console.error("Network verification error:", error);
+    toast.error("Please switch to Ethereum Hoodi network in MetaMask");
+    throw new Error(
+      "Wrong network. Please switch to Ethereum Hoodi in MetaMask."
+    );
+  }
+
+  return new ethers.BrowserProvider(ethereum);
 };
 
 const getContract = async (withSigner = false) => {
-  const provider = getProvider();
+  const provider = await getProvider();
   if (withSigner) {
     const signer = await provider.getSigner();
     return new ethers.Contract(CONTRACT_ADDRESS, VotingSystemABI, signer);
@@ -29,7 +85,7 @@ const getContract = async (withSigner = false) => {
 /* ================= WALLET ================= */
 
 export const connectWallet = async (): Promise<string> => {
-  const provider = getProvider();
+  const provider = await getProvider();
   await provider.send("eth_requestAccounts", []);
   const signer = await provider.getSigner();
   return signer.getAddress();
@@ -298,7 +354,7 @@ export const getVoterInfo = async (voterAddress: string) => {
 export const isVoterRegistered = async (address?: string): Promise<boolean> => {
   try {
     if (!address) {
-      const provider = getProvider();
+      const provider = await getProvider();
       const signer = await provider.getSigner();
       address = await signer.getAddress();
     }
@@ -345,7 +401,7 @@ export const batchVote = async (
   };
 };
 
-/* ================= VOTE VERIFICATION ================= */ 
+/* ================= VOTE VERIFICATION ================= */
 
 export interface VoteReceipt {
   categoryId: number;
@@ -368,6 +424,98 @@ export const getMyVotes = async (): Promise<VoteReceipt[]> => {
   }));
 };
 
+/**
+ * ✅ BLOCKCHAIN EVENT-BASED VOTE RECEIPTS
+ * Fetches vote receipts directly from blockchain VoteCast events
+ * This is isolated from other functions and provides true blockchain verification
+ */
+export const getVoteReceiptsFromBlockchain = async (
+  walletAddress: string,
+  electionStartTime?: number,
+  electionEndTime?: number
+): Promise<VoteReceipt[]> => {
+  try {
+    const contract = await getContract(false);
+
+    console.log(
+      "📜 Querying blockchain for VoteCast events for:",
+      walletAddress
+    );
+
+    // Query VoteCast events filtered by voter address
+    // event VoteCast(address indexed voter, uint256 indexed categoryId, uint256 indexed candidateId)
+    const filter = contract.filters.VoteCast(walletAddress);
+    const events = await contract.queryFilter(filter);
+
+    console.log(`✅ Found ${events.length} VoteCast event(s) on blockchain`);
+
+    if (events.length === 0) {
+      return [];
+    }
+
+    // Get all categories to map IDs to names
+    const categories = await getAllCategories();
+    const categoryMap = new Map(categories.map((c: any) => [c.id, c]));
+
+    // Process each event and enrich with names
+    const receipts: VoteReceipt[] = [];
+
+    for (const event of events) {
+      try {
+        const categoryId = Number((event as any).args?.categoryId);
+        const candidateId = Number((event as any).args?.candidateId);
+
+        // Get block timestamp
+        const block = await event.getBlock();
+        const timestamp = new Date(block.timestamp * 1000);
+
+        // Filter by election time range if provided
+        if (electionStartTime && electionEndTime) {
+          const voteTime = timestamp.getTime() / 1000; // Convert to seconds
+          if (voteTime < electionStartTime || voteTime > electionEndTime) {
+            console.log(
+              `⏭️  Skipping vote from ${timestamp.toLocaleString()} (outside current election)`
+            );
+            continue; // Skip votes outside the election period
+          }
+        }
+
+        // Get category name
+        const category: any = categoryMap.get(categoryId);
+        const categoryName = category?.name || `Category ${categoryId}`;
+
+        // Get candidate name from the category
+        const candidates = await getCandidatesForCategory(categoryId);
+        const candidate = candidates.find((c: any) => c.id === candidateId);
+        const candidateName = candidate?.name || `Candidate ${candidateId}`;
+
+        receipts.push({
+          categoryId,
+          categoryName,
+          candidateId,
+          candidateName,
+          timestamp,
+          transactionHash: event.transactionHash,
+        });
+      } catch (err) {
+        console.error("Error processing vote event:", err);
+        // Continue processing other events even if one fails
+      }
+    }
+
+    // Sort by timestamp (newest first)
+    receipts.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
+    console.log(
+      `✅ Processed ${receipts.length} blockchain vote receipt(s) for current election`
+    );
+
+    return receipts;
+  } catch (error) {
+    console.error("❌ Error fetching votes from blockchain:", error);
+    throw new Error("Failed to fetch vote receipts from blockchain");
+  }
+};
 
 export const verifyStudentEligibility = async (_formData: any) => {
   return { eligible: true, message: "OK" };

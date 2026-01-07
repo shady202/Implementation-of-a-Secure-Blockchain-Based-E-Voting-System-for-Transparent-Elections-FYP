@@ -23,3 +23,4 @@ export async function verifyPassword(
 ): Promise<boolean> {
   return await bcrypt.compare(password, hash);
 }
+
