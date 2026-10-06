@@ -1,14 +1,13 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f2027,50:203a43,100:00d9a5&height=200&section=header&text=Hey%2C%20I'm%20Shiko&fontSize=48&fontColor=ffffff&fontAlignY=36&desc=Cyber%20Security%20%7C%20SOC%20%7C%20GRC%20%7C%20Blockchain&descSize=18&descAlignY=58" alt="header" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f2027,50:203a43,100:00d9a5&height=200&section=header&text=Hey%2C%20I'm%20Shady&fontSize=48&fontColor=ffffff&fontAlignY=36&desc=Cyber%20Security%20%7C%20SOC%20%7C%20GRC%20%7C%20Blockchain&descSize=18&descAlignY=58" alt="header" />
 
 <a href="https://git.io/typing-svg">
-  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=00D9A5&center=true&vCenter=true&width=640&lines=BSc+(Hons)+Computer+Science+%E2%80%94+Cyber+Security;CompTIA+Security%2B+Certified;SOC+%26+GRC+Enthusiast+%F0%9F%9B%A1%EF%B8%8F;Building+secure+blockchain+e-voting+%F0%9F%97%B3%EF%B8%8F" alt="Typing SVG" />
+  <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=00D9A5&center=true&vCenter=true&width=640&lines=BSc+(Hons)+Computer+Science+%E2%80%94+Cyber+Security;SOC+%26+GRC+Enthusiast+%F0%9F%9B%A1%EF%B8%8F;Building+secure+blockchain+e-voting+%F0%9F%97%B3%EF%B8%8F" alt="Typing SVG" />
 </a>
 
 ![Profile Views](https://komarev.com/ghpvc/?username=shady202&label=Profile%20Views&color=00d9a5&style=flat-square)
 ![Location](https://img.shields.io/badge/Based%20in-Qatar%20%F0%9F%87%B6%F0%9F%87%A6-8A1538?style=flat-square)
-![Security+](https://img.shields.io/badge/CompTIA-Security%2B-C8202F?style=flat-square&logo=comptia&logoColor=white)
 
 </div>
 
@@ -17,10 +16,9 @@
 ## 👨‍💻 About Me
 
 ```python
-class Shiko:
+class Shady:
     role        = "Cyber Security student (BSc Hons, Computer Science)"
     location    = "Qatar"
-    certified   = ["CompTIA Security+"]
     experience  = ["ABATS Doha — Cybersecurity / IT Security", "ABATS Doha — Internal Audit & Risk"]
     focus       = ["SOC operations", "Threat analysis (TTPs)", "GRC", "Cloud & AI security"]
     currently   = "Studying Microsoft SC-500 and building a blockchain e-voting system"
