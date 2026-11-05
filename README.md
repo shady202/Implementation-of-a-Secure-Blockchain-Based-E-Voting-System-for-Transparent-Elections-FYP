@@ -1,8 +1,7 @@
 <div align="center">
 
-<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f2027,50:203a43,100:00d9a5&height=200&section=header&text=Hey%2C%20I'm%20Shady&fontSize=48&fontColor=ffffff&fontAlignY=36&desc=Cyber%20Security%20%7C%20SOC%20%7C%20GRC%20%7C%20Blockchain%20E-Voting%20Platform&descSize=18&descAlignY=58" alt="header" />
+<img src="https://capsule-render.vercel.app/api?type=waving&color=0:0f2027,50:203a43,100:00d9a5&height=200&section=header&text=Blockchain%20E-Voting%20Platform&fontSize=42&fontColor=ffffff&fontAlignY=36&desc=Cyber%20Security%20%7C%20SOC%20%7C%20GRC%20%7C%20Blockchain&descSize=18&descAlignY=58" alt="Blockchain E-Voting Platform" />
 
-<a href="https://git.io/typing-svg">
   <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&weight=600&size=22&duration=3000&pause=1000&color=00D9A5&center=true&vCenter=true&width=640&lines=BSc+(Hons)+Computer+Science+%E2%80%94+Cyber+Security;SOC+%26+GRC+Enthusiast+%F0%9F%9B%A1%EF%B8%8F;Building+secure+blockchain+e-voting+%F0%9F%97%B3%EF%B8%8F" alt="Typing SVG" />
 </a>
 
